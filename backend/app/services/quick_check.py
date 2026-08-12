@@ -170,14 +170,7 @@ Klik **Proses lanjut** jika ingin membaca dan memvalidasi data penuh."""
 def _ocr_markdown(filename: str, metadata: dict[str, Any], extracted_text: str, fallback: bool) -> str:
     parsed = _safe_json_or_text(extracted_text)
     preview = _ocr_table(parsed)
-    status = "fallback" if fallback else "MCP Vision"
-    return f"""### Cek cepat gambar/nota
-
-**File:** `{filename}`  
-**Jenis awal:** `image_evidence`  
-**Pembaca:** `{status}`
-
-### Hasil pembacaan OCR Vision
+    return f"""### Hasil pembacaan OCR Vision
 
 {preview}"""
 

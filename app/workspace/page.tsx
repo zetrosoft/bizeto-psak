@@ -137,7 +137,7 @@ const copy = {
     entities: "Entities",
     documentation: "Documentation",
     uploadFailed: "Upload failed. The file is kept only in this browser session.",
-    uploadReading: "I received the file. I am checking the type and reading the evidence through the right tool. Please wait a moment; no accounting data will be posted yet.",
+    uploadReading: "Give me a moment—I’m reading this file and pulling out the important details. Nothing is posted to accounting yet.",
     ocrEditor: "OCR correction draft",
     ocrEditorHint: "Edit the markdown table if the OCR result needs correction before continuing.",
     rerunOcr: "Re-OCR",
@@ -184,7 +184,7 @@ const copy = {
     entities: "Entitas",
     documentation: "Dokumentasi",
     uploadFailed: "Upload gagal. File hanya tersimpan di sesi browser ini.",
-    uploadReading: "File sudah saya terima. Saya sedang mengecek jenis file dan membaca buktinya dengan tool yang sesuai. Tunggu sebentar; belum ada data akuntansi yang diposting.",
+    uploadReading: "Sebentar ya, saya baca dulu file ini dan ambil bagian pentingnya. Belum ada data yang diposting ke akuntansi.",
     ocrEditor: "Draf koreksi OCR",
     ocrEditorHint: "Edit tabel markdown ini jika hasil OCR perlu dikoreksi sebelum lanjut.",
     rerunOcr: "Re-OCR",
@@ -771,41 +771,45 @@ function ChatBubble(props: {
   const { message, t, source, onConfirm, onRerunOcr, onUpdateOcrDraft } = props;
   const isUser = message.role === "user";
   const isImageOcrReview = message.actions === "confirm_process" && source?.document?.document_type === "image_evidence";
+  const showSourceCard = Boolean(source) && !isImageOcrReview;
+  const isWorking = !isUser && source?.status === "processing" && !message.actions;
   const displayContent = isImageOcrReview && source?.ocrDraftMarkdown ? source.ocrDraftMarkdown : message.content;
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${isUser ? "bg-gold text-white" : "border border-line bg-panel"}`}>
-        <MarkdownContent text={displayContent} />
-        {source && (
-          <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3 text-xs">
-            <p className="font-bold">{source.label}</p>
-            <p className="mt-1 text-muted-foreground">{source.detail}</p>
-          </div>
-        )}
-        {isImageOcrReview && source?.ocrDraftMarkdown && (
-          <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold">{t.ocrEditor}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t.ocrEditorHint}</p>
-              </div>
-              <button onClick={() => onRerunOcr(source)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-ink">
-                <RefreshCw size={12} /> {t.rerunOcr}
-              </button>
+      <div className={`${isUser ? "max-w-[82%]" : "w-full max-w-none"} ${isWorking ? "relative overflow-hidden rounded-[18px] p-[1px] before:absolute before:inset-[-70%] before:animate-spin before:bg-[conic-gradient(from_90deg,rgba(12,143,124,.05),rgba(12,143,124,.85),rgba(217,168,91,.85),rgba(80,112,255,.55),rgba(12,143,124,.05))] before:content-['']" : ""}`}>
+        <div className={`relative rounded-2xl px-4 py-3 text-sm leading-6 ${isUser ? "bg-gold text-white" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
+          <MarkdownContent text={displayContent} />
+          {showSourceCard && source && (
+            <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3 text-xs">
+              <p className="font-bold">{source.label}</p>
+              <p className="mt-1 text-muted-foreground">{source.detail}</p>
             </div>
-            <textarea
-              value={source.ocrDraftMarkdown}
-              onChange={(event) => onUpdateOcrDraft(source.id, event.target.value)}
-              rows={8}
-              className="max-h-72 min-h-36 w-full resize-y rounded-lg border border-line bg-panel p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
-            />
-          </div>
-        )}
-        {message.actions === "confirm_process" && source?.document && (
-          <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
-            {t.continueProcess}
-          </button>
-        )}
+          )}
+          {isImageOcrReview && source?.ocrDraftMarkdown && (
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold">{t.ocrEditor}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t.ocrEditorHint}</p>
+                </div>
+                <button onClick={() => onRerunOcr(source)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-ink">
+                  <RefreshCw size={12} /> {t.rerunOcr}
+                </button>
+              </div>
+              <textarea
+                value={source.ocrDraftMarkdown}
+                onChange={(event) => onUpdateOcrDraft(source.id, event.target.value)}
+                rows={8}
+                className="max-h-72 min-h-36 w-full resize-y rounded-lg border border-line bg-canvas/45 p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
+              />
+            </div>
+          )}
+          {message.actions === "confirm_process" && source?.document && (
+            <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
+              {t.continueProcess}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

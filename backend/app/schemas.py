@@ -82,6 +82,11 @@ class ReviewDecisionRequest(BaseModel):
     reason: str | None = None
 
 
+class OcrDraftRequest(BaseModel):
+    markdown: str
+    actor: str = "workspace_user"
+
+
 class SmartNoteRequest(BaseModel):
     text: str
     source_label: str = "Smart note"

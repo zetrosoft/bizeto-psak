@@ -19,11 +19,14 @@ import {
   Moon,
   PanelRight,
   Plus,
+  RefreshCw,
+  RotateCw,
   Settings,
   Sparkles,
   Sun,
   Upload,
   X,
+  ZoomIn,
   type LucideIcon,
 } from "lucide-react";
 import { ChangeEvent, RefObject, useEffect, useMemo, useRef, useState } from "react";
@@ -77,6 +80,7 @@ type WorkspaceSource = {
   detail: string;
   previewUrl?: string;
   previewMimeType?: string;
+  ocrDraftMarkdown?: string;
   document?: BackendDocument;
   status: "attached" | "quick_checked" | "processing" | "review_required" | "confirmed" | "failed";
 };
@@ -133,6 +137,10 @@ const copy = {
     entities: "Entities",
     documentation: "Documentation",
     uploadFailed: "Upload failed. The file is kept only in this browser session.",
+    uploadReading: "I received the file. I am checking the type and reading the evidence through the right tool. Please wait a moment; no accounting data will be posted yet.",
+    ocrEditor: "OCR correction draft",
+    ocrEditorHint: "Edit the markdown table if the OCR result needs correction before continuing.",
+    rerunOcr: "Re-OCR",
     discussionPrefix: "As a discussion, here is my take:",
     inputModes: {
       upload: "Upload file",
@@ -176,6 +184,10 @@ const copy = {
     entities: "Entitas",
     documentation: "Dokumentasi",
     uploadFailed: "Upload gagal. File hanya tersimpan di sesi browser ini.",
+    uploadReading: "File sudah saya terima. Saya sedang mengecek jenis file dan membaca buktinya dengan tool yang sesuai. Tunggu sebentar; belum ada data akuntansi yang diposting.",
+    ocrEditor: "Draf koreksi OCR",
+    ocrEditorHint: "Edit tabel markdown ini jika hasil OCR perlu dikoreksi sebelum lanjut.",
+    rerunOcr: "Re-OCR",
     discussionPrefix: "Sebagai diskusi, pandangan saya:",
     inputModes: {
       upload: "Upload file",
@@ -293,10 +305,13 @@ export default function WorkspacePage() {
       if (!response.ok) throw new Error(`Upload failed (${response.status})`);
       localSource.document = await response.json();
       localSource.detail = `${localSource.document?.document_type || "unknown"} · ${formatBytes(file.size)}`;
-      localSource.status = "quick_checked";
+      localSource.status = "processing";
       addSource(localSource);
+      pushMessage("assistant", t.uploadReading, localSource.id);
       const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${localSource.document?.id}/quick-check`, {});
       localSource.detail = `${quickCheck.document_type} · ${quickCheck.provider}`;
+      localSource.status = "quick_checked";
+      localSource.ocrDraftMarkdown = quickCheck.document_type === "image_evidence" ? quickCheck.markdown : undefined;
       setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
       pushMessage("assistant", quickCheck.markdown, localSource.id, "confirm_process");
       return;
@@ -319,6 +334,12 @@ export default function WorkspacePage() {
     setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "processing" } : item));
 
     try {
+      if (source.ocrDraftMarkdown) {
+        await postJson<BackendDocument>(`/api/documents/${source.document.id}/ocr-draft`, {
+          markdown: source.ocrDraftMarkdown,
+          actor: "workspace_user",
+        });
+      }
       const result = await postJson<{ document: BackendDocument; resume: BackendResume }>(`/api/documents/${source.document.id}/process`, {});
       setResume(result.resume);
       setPhase("review_required");
@@ -329,6 +350,33 @@ export default function WorkspacePage() {
       setApiError(error instanceof Error ? error.message : "Process failed");
       setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "failed" } : item));
     }
+  }
+
+  async function rerunOcr(source: WorkspaceSource) {
+    if (!source.document) return;
+    setPhase("processing");
+    setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "processing" } : item));
+    pushMessage("assistant", locale === "id" ? "Saya jalankan ulang OCR untuk bukti terpilih. Hasil baru akan tampil sebagai draf yang bisa Anda koreksi." : "I am running OCR again for the selected evidence. The new result will appear as an editable draft.", source.id);
+    try {
+      const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${source.document.id}/quick-check`, {});
+      const nextSource = {
+        ...source,
+        detail: `${quickCheck.document_type} · ${quickCheck.provider}`,
+        ocrDraftMarkdown: quickCheck.markdown,
+        status: "quick_checked" as const,
+      };
+      setSources((items) => items.map((item) => item.id === source.id ? nextSource : item));
+      setPhase("source_review");
+      pushMessage("assistant", quickCheck.markdown, source.id, "confirm_process");
+    } catch (error) {
+      setPhase("failed");
+      setApiError(error instanceof Error ? error.message : "Re-OCR failed");
+      setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "failed" } : item));
+    }
+  }
+
+  function updateOcrDraft(sourceId: string, value: string) {
+    setSources((items) => items.map((item) => item.id === sourceId ? { ...item, ocrDraftMarkdown: value } : item));
   }
 
   async function confirmResult() {
@@ -457,6 +505,8 @@ export default function WorkspacePage() {
                       message={message}
                       t={t}
                       source={message.sourceId ? sources.find((item) => item.id === message.sourceId) : undefined}
+                      onUpdateOcrDraft={updateOcrDraft}
+                      onRerunOcr={(source) => void rerunOcr(source)}
                       onConfirm={() => {
                         const source = sources.find((item) => item.id === message.sourceId);
                         if (source) void processSource(source);
@@ -714,27 +764,45 @@ function ChatBubble(props: {
   message: ChatMessage;
   t: WorkspaceCopy;
   source?: WorkspaceSource;
+  onUpdateOcrDraft: (sourceId: string, value: string) => void;
+  onRerunOcr: (source: WorkspaceSource) => void;
   onConfirm: () => void;
 }) {
-  const { message, t, source, onConfirm } = props;
+  const { message, t, source, onConfirm, onRerunOcr, onUpdateOcrDraft } = props;
   const isUser = message.role === "user";
+  const isImageOcrReview = message.actions === "confirm_process" && source?.document?.document_type === "image_evidence";
+  const displayContent = isImageOcrReview && source?.ocrDraftMarkdown ? source.ocrDraftMarkdown : message.content;
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${isUser ? "bg-gold text-white" : "border border-line bg-panel"}`}>
-        <MarkdownContent text={message.content} />
+        <MarkdownContent text={displayContent} />
         {source && (
           <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3 text-xs">
             <p className="font-bold">{source.label}</p>
             <p className="mt-1 text-muted-foreground">{source.detail}</p>
           </div>
         )}
-        {source?.previewUrl && (
-          <div className="mt-3 overflow-hidden rounded-xl border border-line bg-canvas/45">
-            <img src={source.previewUrl} alt={source.label} className="max-h-80 w-full object-contain" />
+        {isImageOcrReview && source?.ocrDraftMarkdown && (
+          <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold">{t.ocrEditor}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t.ocrEditorHint}</p>
+              </div>
+              <button onClick={() => onRerunOcr(source)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-ink">
+                <RefreshCw size={12} /> {t.rerunOcr}
+              </button>
+            </div>
+            <textarea
+              value={source.ocrDraftMarkdown}
+              onChange={(event) => onUpdateOcrDraft(source.id, event.target.value)}
+              rows={8}
+              className="max-h-72 min-h-36 w-full resize-y rounded-lg border border-line bg-panel p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
+            />
           </div>
         )}
         {message.actions === "confirm_process" && source?.document && (
-          <button onClick={onConfirm} className="mt-3 rounded-lg bg-gold px-3 py-2 text-xs font-bold text-white">
+          <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
             {t.continueProcess}
           </button>
         )}
@@ -766,20 +834,72 @@ function MarkdownContent({ text }: { text: string }) {
 
 function MarkdownText({ text }: { text: string }) {
   const lines = text.split("\n");
+  const nodes = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (isMarkdownTableStart(lines, index)) {
+      const tableLines = [];
+      while (index < lines.length && lines[index].trim().startsWith("|")) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      index -= 1;
+      nodes.push(<MarkdownTable key={index} lines={tableLines} />);
+      continue;
+    }
+
+    if (!trimmed) {
+      nodes.push(<div key={index} className="h-1" />);
+    } else if (trimmed.startsWith("### ")) {
+      nodes.push(<h3 key={index} className="pt-2 text-sm font-bold text-ink">{renderInline(trimmed.slice(4))}</h3>);
+    } else if (trimmed.startsWith("## ")) {
+      nodes.push(<h2 key={index} className="pt-2 text-base font-bold text-ink">{renderInline(trimmed.slice(3))}</h2>);
+    } else if (trimmed.startsWith("# ")) {
+      nodes.push(<h1 key={index} className="pt-2 text-lg font-bold text-ink">{renderInline(trimmed.slice(2))}</h1>);
+    } else if (trimmed.startsWith("- ")) {
+      nodes.push(<p key={index} className="pl-3 text-sm before:mr-2 before:content-['•']">{renderInline(trimmed.slice(2))}</p>);
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      nodes.push(<p key={index} className="pl-3 text-sm">{renderInline(trimmed)}</p>);
+    } else {
+      nodes.push(<p key={index} className="text-sm">{renderInline(trimmed)}</p>);
+    }
+  }
+  return <div className="space-y-1.5">{nodes}</div>;
+}
+
+function isMarkdownTableStart(lines: string[], index: number) {
+  const current = lines[index]?.trim() ?? "";
+  const next = lines[index + 1]?.trim() ?? "";
+  return current.startsWith("|") && next.startsWith("|") && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(next);
+}
+
+function MarkdownTable({ lines }: { lines: string[] }) {
+  const headers = splitMarkdownRow(lines[0]);
+  const rows = lines.slice(2).map(splitMarkdownRow);
   return (
-    <div className="space-y-1.5">
-      {lines.map((line, index) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={index} className="h-1" />;
-        if (trimmed.startsWith("### ")) return <h3 key={index} className="pt-2 text-sm font-bold text-ink">{renderInline(trimmed.slice(4))}</h3>;
-        if (trimmed.startsWith("## ")) return <h2 key={index} className="pt-2 text-base font-bold text-ink">{renderInline(trimmed.slice(3))}</h2>;
-        if (trimmed.startsWith("# ")) return <h1 key={index} className="pt-2 text-lg font-bold text-ink">{renderInline(trimmed.slice(2))}</h1>;
-        if (trimmed.startsWith("- ")) return <p key={index} className="pl-3 text-sm before:mr-2 before:content-['•']">{renderInline(trimmed.slice(2))}</p>;
-        if (/^\d+\.\s/.test(trimmed)) return <p key={index} className="pl-3 text-sm">{renderInline(trimmed)}</p>;
-        return <p key={index} className="text-sm">{renderInline(trimmed)}</p>;
-      })}
+    <div className="my-3 overflow-hidden rounded-xl border border-line">
+      <div className="max-h-80 overflow-auto">
+        <table className="w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 bg-muted text-[10px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              {headers.map((header) => <th key={header} className="border-b border-line px-3 py-2 font-bold">{renderInline(header)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="odd:bg-canvas/30">
+                {headers.map((_, cellIndex) => <td key={cellIndex} className="border-b border-line/70 px-3 py-2 align-top">{renderInline(row[cellIndex] || "-")}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
+}
+
+function splitMarkdownRow(line: string) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").replace(/<br>/g, "\n").trim());
 }
 
 function renderInline(text: string) {
@@ -903,6 +1023,18 @@ function Inspector(props: {
   onClose: () => void;
 }) {
   const { locale, t, source, phase, resume, onClose } = props;
+  const [rotation, setRotation] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogRotation, setDialogRotation] = useState(0);
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    setRotation(0);
+    setDialogRotation(0);
+    setZoom(1);
+    setDialogOpen(false);
+  }, [source?.id]);
+
   return (
     <aside className="hidden h-full overflow-y-auto border-l border-line bg-panel/45 p-5 lg:block">
       <div className="flex items-start justify-between">
@@ -918,7 +1050,22 @@ function Inspector(props: {
         <>
           {source.previewUrl && (
             <div className="mt-5 overflow-hidden rounded-xl border border-line bg-canvas/45">
-              <img src={source.previewUrl} alt={source.label} className="max-h-80 w-full object-contain" />
+              <button onClick={() => setDialogOpen(true)} className="flex max-h-80 w-full items-center justify-center overflow-hidden bg-black/5 p-2" aria-label="Open image preview">
+                <img
+                  src={source.previewUrl}
+                  alt={source.label}
+                  className="max-h-72 w-full object-contain transition-transform"
+                  style={{ transform: `rotate(${rotation}deg)` }}
+                />
+              </button>
+              <div className="flex items-center justify-between gap-2 border-t border-line bg-panel/75 p-2">
+                <button onClick={() => setRotation((value) => value + 90)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-ink">
+                  <RotateCw size={12} /> Rotate
+                </button>
+                <button onClick={() => setDialogOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-ink">
+                  <ZoomIn size={12} /> Preview
+                </button>
+              </div>
             </div>
           )}
           <div className="mt-5 rounded-lg border border-line bg-canvas/45 p-4">
@@ -940,6 +1087,42 @@ function Inspector(props: {
             <div className="mt-5 flex gap-2 rounded-lg border border-teal/30 bg-teal/10 p-3 text-xs text-teal">
               <BadgeCheck size={16} className="shrink-0" />
               <span>{locale === "id" ? "Draf terkonfirmasi dan siap naik ke tahap berikutnya." : "Draft confirmed and ready for the next stage."}</span>
+            </div>
+          )}
+          {source.previewUrl && dialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
+              <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-panel">
+                <div className="flex items-center justify-between gap-3 border-b border-line p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{source.label}</p>
+                    <p className="text-[11px] text-muted-foreground">{source.detail}</p>
+                  </div>
+                  <button onClick={() => setDialogOpen(false)} className="grid size-9 place-items-center rounded-lg border border-line text-muted-foreground hover:bg-muted hover:text-ink" aria-label="Close image preview">
+                    <X size={15} />
+                  </button>
+                </div>
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/10 p-6">
+                  <img
+                    src={source.previewUrl}
+                    alt={source.label}
+                    className="max-h-[72vh] max-w-full object-contain transition-transform"
+                    style={{ transform: `scale(${zoom}) rotate(${dialogRotation}deg)` }}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line p-3">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))))} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">−</button>
+                    <span className="min-w-14 text-center text-xs font-bold text-muted-foreground">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => setZoom((value) => Math.min(3, Number((value + 0.25).toFixed(2))))} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">+</button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setDialogRotation((value) => value + 90)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">
+                      <RotateCw size={13} /> Rotate
+                    </button>
+                    <button onClick={() => { setZoom(1); setDialogRotation(0); }} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">Reset</button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </>

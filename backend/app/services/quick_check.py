@@ -169,7 +169,7 @@ Klik **Proses lanjut** jika ingin membaca dan memvalidasi data penuh."""
 
 def _ocr_markdown(filename: str, metadata: dict[str, Any], extracted_text: str, fallback: bool) -> str:
     parsed = _safe_json_or_text(extracted_text)
-    preview = json.dumps(parsed, ensure_ascii=False, indent=2)[:1800] if isinstance(parsed, dict) else str(parsed)[:1800]
+    preview = _ocr_table(parsed)
     status = "fallback" if fallback else "MCP Vision"
     return f"""### Cek cepat gambar/nota
 
@@ -179,17 +179,7 @@ def _ocr_markdown(filename: str, metadata: dict[str, Any], extracted_text: str, 
 
 ### Hasil pembacaan OCR Vision
 
-```json
-{preview}
-```
-
-### Catatan
-
-- Ini baru pembacaan awal seperti pola OCR di Jualan.
-- Data belum dinormalisasi menjadi jurnal.
-- Jika hasil OCR terlihat masuk akal, lanjutkan ke proses normalisasi dan validasi.
-
-Klik **Proses lanjut** jika ingin melanjutkan."""
+{preview}"""
 
 
 def _safe_json_or_text(text: str | None) -> Any:
@@ -200,3 +190,50 @@ def _safe_json_or_text(text: str | None) -> Any:
         return json.loads(clean)
     except json.JSONDecodeError:
         return clean
+
+
+def _ocr_table(parsed: Any) -> str:
+    if isinstance(parsed, dict):
+        rows: list[tuple[str, str]] = []
+        for key, value in parsed.items():
+            if isinstance(value, (dict, list)):
+                value_text = json.dumps(value, ensure_ascii=False)
+            else:
+                value_text = "" if value is None else str(value)
+            rows.append((_human_key(key), value_text))
+        return _markdown_table(["Field", "Hasil OCR"], rows[:30])
+
+    if isinstance(parsed, list):
+        rows = [(str(index + 1), json.dumps(item, ensure_ascii=False) if isinstance(item, (dict, list)) else str(item)) for index, item in enumerate(parsed[:30])]
+        return _markdown_table(["No", "Hasil OCR"], rows)
+
+    text = str(parsed or "").strip()
+    if not text:
+        return _markdown_table(["Field", "Hasil OCR"], [("Status", "Belum ada teks terbaca dari OCR.")])
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) > 1:
+        return _markdown_table(["Baris", "Teks terbaca"], [(str(index + 1), line) for index, line in enumerate(lines[:30])])
+
+    return _markdown_table(["Field", "Hasil OCR"], [("Teks terbaca", text[:1800])])
+
+
+def _markdown_table(headers: list[str], rows: list[tuple[str, str]]) -> str:
+    safe_headers = [_escape_cell(header) for header in headers]
+    body = "\n".join(
+        f"| {_escape_cell(left)} | {_escape_cell(right)} |"
+        for left, right in rows
+    )
+    return "\n".join([
+        f"| {' | '.join(safe_headers)} |",
+        f"| {' | '.join('---' for _ in safe_headers)} |",
+        body or f"| {' | '.join('-' for _ in safe_headers)} |",
+    ])
+
+
+def _escape_cell(value: str) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def _human_key(value: str) -> str:
+    return str(value).replace("_", " ").replace("-", " ").strip().title()

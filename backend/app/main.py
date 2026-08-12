@@ -11,6 +11,7 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     CodeScanRequest,
+    OcrDraftRequest,
     PreviewResponse,
     ProcessResponse,
     ProcessingResume,
@@ -289,6 +290,22 @@ def confirm_document(document_id: str, request: ReviewDecisionRequest) -> dict:
     if get_document(document_id) is None:
         raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan.")
     return update_document(document_id, status="confirmed", actor=request.actor, action="confirmed", metadata={"reason": request.reason})
+
+
+@app.post("/api/documents/{document_id}/ocr-draft", response_model=UploadedDocument)
+def save_ocr_draft(document_id: str, request: OcrDraftRequest) -> dict:
+    row = get_document(document_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan.")
+    preview = decode_json(row["preview_json"], {})
+    preview["ocr_review_markdown"] = request.markdown
+    return update_document(
+        document_id,
+        preview=preview,
+        actor=request.actor,
+        action="ocr_draft_saved",
+        metadata={"draft_length": len(request.markdown)},
+    )
 
 
 @app.post("/api/documents/{document_id}/reject", response_model=UploadedDocument)

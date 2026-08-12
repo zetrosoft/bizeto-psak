@@ -75,6 +75,8 @@ type WorkspaceSource = {
   kind: SourceKind;
   label: string;
   detail: string;
+  previewUrl?: string;
+  previewMimeType?: string;
   document?: BackendDocument;
   status: "attached" | "quick_checked" | "processing" | "review_required" | "confirmed" | "failed";
 };
@@ -270,11 +272,14 @@ export default function WorkspacePage() {
     if (!file) return;
 
     setApiError("");
+    const isImage = file.type.startsWith("image/");
     const localSource: WorkspaceSource = {
       id: crypto.randomUUID(),
       kind: "file",
       label: file.name,
       detail: `${file.type || "unknown"} · ${formatBytes(file.size)}`,
+      previewUrl: isImage ? URL.createObjectURL(file) : undefined,
+      previewMimeType: isImage ? file.type : undefined,
       status: "attached",
     };
 
@@ -341,6 +346,9 @@ export default function WorkspacePage() {
   }
 
   function reset() {
+    sources.forEach((source) => {
+      if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
+    });
     setPhase("idle");
     setMessages([]);
     setSources([]);
@@ -720,6 +728,11 @@ function ChatBubble(props: {
             <p className="mt-1 text-muted-foreground">{source.detail}</p>
           </div>
         )}
+        {source?.previewUrl && (
+          <div className="mt-3 overflow-hidden rounded-xl border border-line bg-canvas/45">
+            <img src={source.previewUrl} alt={source.label} className="max-h-80 w-full object-contain" />
+          </div>
+        )}
         {message.actions === "confirm_process" && source?.document && (
           <button onClick={onConfirm} className="mt-3 rounded-lg bg-gold px-3 py-2 text-xs font-bold text-white">
             {t.continueProcess}
@@ -903,6 +916,11 @@ function Inspector(props: {
         <p className="mt-6 text-sm text-muted-foreground">{t.noEvidence}</p>
       ) : (
         <>
+          {source.previewUrl && (
+            <div className="mt-5 overflow-hidden rounded-xl border border-line bg-canvas/45">
+              <img src={source.previewUrl} alt={source.label} className="max-h-80 w-full object-contain" />
+            </div>
+          )}
           <div className="mt-5 rounded-lg border border-line bg-canvas/45 p-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{source.kind}</p>
             <p className="mt-2 break-words text-sm font-bold">{source.label}</p>

@@ -59,6 +59,17 @@ type BackendResume = {
   next_action: string;
 };
 
+type QuickCheckResponse = {
+  document_id: string;
+  document_type: string;
+  source_label: string;
+  markdown: string;
+  provider: string;
+  fallback: boolean;
+  extracted_text?: string | null;
+  metadata: Record<string, unknown>;
+};
+
 type WorkspaceSource = {
   id: string;
   kind: SourceKind;
@@ -103,6 +114,7 @@ const copy = {
     quickCheck: "Quick check",
     plan: "Process plan",
     confirmProcess: "Confirm process",
+    continueProcess: "Continue process",
     processing: "Processing…",
     preview: "Preview",
     confirmResult: "Confirm result",
@@ -145,6 +157,7 @@ const copy = {
     quickCheck: "Cek cepat",
     plan: "Rencana proses",
     confirmProcess: "Konfirmasi proses",
+    continueProcess: "Proses lanjut",
     processing: "Memproses…",
     preview: "Preview",
     confirmResult: "Konfirmasi hasil",
@@ -276,6 +289,12 @@ export default function WorkspacePage() {
       localSource.document = await response.json();
       localSource.detail = `${localSource.document?.document_type || "unknown"} · ${formatBytes(file.size)}`;
       localSource.status = "quick_checked";
+      addSource(localSource);
+      const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${localSource.document?.id}/quick-check`, {});
+      localSource.detail = `${quickCheck.document_type} · ${quickCheck.provider}`;
+      setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
+      pushMessage("assistant", quickCheck.markdown, localSource.id, "confirm_process");
+      return;
     } catch (error) {
       setApiError(error instanceof Error ? error.message : t.uploadFailed);
       localSource.status = "failed";
@@ -694,7 +713,7 @@ function ChatBubble(props: {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${isUser ? "bg-gold text-white" : "border border-line bg-panel"}`}>
-        <p className="whitespace-pre-wrap">{message.content}</p>
+        <MarkdownContent text={message.content} />
         {source && (
           <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3 text-xs">
             <p className="font-bold">{source.label}</p>
@@ -703,12 +722,64 @@ function ChatBubble(props: {
         )}
         {message.actions === "confirm_process" && source?.document && (
           <button onClick={onConfirm} className="mt-3 rounded-lg bg-gold px-3 py-2 text-xs font-bold text-white">
-            {t.confirmProcess}
+            {t.continueProcess}
           </button>
         )}
       </div>
     </div>
   );
+}
+
+function MarkdownContent({ text }: { text: string }) {
+  const blocks = text.split(/```(\w+)?\n?([\s\S]*?)```/g);
+  const nodes = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (index % 3 === 0) {
+      nodes.push(<MarkdownText key={index} text={blocks[index]} />);
+    } else if (index % 3 === 1) {
+      const code = blocks[index + 1] ?? "";
+      nodes.push(
+        <pre key={index} className="my-3 max-h-72 overflow-auto rounded-xl border border-line bg-canvas/70 p-3 text-[11px] leading-5 text-muted-foreground">
+          <code>{code.trim()}</code>
+        </pre>,
+      );
+      index += 1;
+    }
+  }
+
+  return <div className="space-y-2">{nodes}</div>;
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={index} className="h-1" />;
+        if (trimmed.startsWith("### ")) return <h3 key={index} className="pt-2 text-sm font-bold text-ink">{renderInline(trimmed.slice(4))}</h3>;
+        if (trimmed.startsWith("## ")) return <h2 key={index} className="pt-2 text-base font-bold text-ink">{renderInline(trimmed.slice(3))}</h2>;
+        if (trimmed.startsWith("# ")) return <h1 key={index} className="pt-2 text-lg font-bold text-ink">{renderInline(trimmed.slice(2))}</h1>;
+        if (trimmed.startsWith("- ")) return <p key={index} className="pl-3 text-sm before:mr-2 before:content-['•']">{renderInline(trimmed.slice(2))}</p>;
+        if (/^\d+\.\s/.test(trimmed)) return <p key={index} className="pl-3 text-sm">{renderInline(trimmed)}</p>;
+        return <p key={index} className="text-sm">{renderInline(trimmed)}</p>;
+      })}
+    </div>
+  );
+}
+
+function renderInline(text: string) {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return <code key={index} className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-gold">{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index} className="font-bold text-ink">{part.slice(2, -2)}</strong>;
+    }
+    return <span key={index}>{part}</span>;
+  });
 }
 
 function ResumeCard(props: {

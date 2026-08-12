@@ -119,3 +119,14 @@ class ChatResponse(BaseModel):
     response: str
     provider: str
     fallback: bool = False
+
+
+class QuickCheckResponse(BaseModel):
+    document_id: str
+    document_type: str
+    source_label: str
+    markdown: str
+    provider: str = "local"
+    fallback: bool = False
+    extracted_text: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

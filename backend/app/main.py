@@ -14,6 +14,7 @@ from app.schemas import (
     PreviewResponse,
     ProcessResponse,
     ProcessingResume,
+    QuickCheckResponse,
     ReviewDecisionRequest,
     SmartNoteRequest,
     UrlInputRequest,
@@ -24,6 +25,7 @@ from app.services.checksum import sha256_bytes
 from app.services.document_router import detect_document_type
 from app.services.ledger_parser import parse_csv_ledger, unsupported_xlsx_preview
 from app.services.mcp_chat_client import build_bizeto_chat_system_prompt, call_mcp_chat
+from app.services.quick_check import quick_check_document
 from app.services.smart_note_parser import classify_note
 from app.storage import decode_json, document_storage_path, get_document, insert_document, row_to_document, update_document
 
@@ -230,6 +232,21 @@ def process_document(document_id: str) -> dict:
         metadata={"processor": "bizeto_psak_local_baseline"},
     )
     return {"document": document, "resume": resume}
+
+
+@app.post("/api/documents/{document_id}/quick-check", response_model=QuickCheckResponse)
+def quick_check(document_id: str) -> dict:
+    row = get_document(document_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan.")
+    result = quick_check_document(row)
+    update_document(
+        document_id,
+        preview={"quick_check": result},
+        action="quick_check_completed",
+        metadata={"provider": result.get("provider"), "fallback": result.get("fallback")},
+    )
+    return result
 
 
 @app.get("/api/documents/{document_id}/status", response_model=UploadedDocument)

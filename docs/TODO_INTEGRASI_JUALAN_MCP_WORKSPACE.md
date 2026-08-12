@@ -23,6 +23,8 @@ Update 2026-08-11:
 - [x] Terapkan source gate: attachment/URL hanya quick check, summary, dan rencana proses sebelum konfirmasi.
 - [x] Koreksi scope UI: layout Workspace tetap mengikuti rancangan AI Studio-style; fitur intent-gate ditanam di balik UI tanpa redesign besar.
 - [x] Hubungkan chat diskusi ke AI melalui backend `/api/chat` -> `https://mcp.samkarsa.com/api/chat`.
+- [x] Tambahkan quick-check upload: baca header/jenis file, CSV header/sample, XLSX package header, PDF/text header, dan adapter OCR Vision untuk image.
+- [x] Render hasil quick-check sebagai response chat markdown dengan tombol `Proses lanjut`.
 - [ ] Hubungkan OCR, AI Vision, parser, mapping jurnal, dan MCP adapter nyata.
 - [x] Implement preview isi file nyata untuk CSV baseline.
 - [x] Implement konfirmasi/reject dengan draft storage dan audit trail baseline.
@@ -287,7 +289,7 @@ TODO:
 Target MCP endpoints:
 
 - [x] `POST /api/chat`
-- [ ] `POST /tools/ocr_receipt`
+- [ ] `POST /tools/ocr_receipt` production. Adapter sudah dibuat, tetapi route `https://mcp.samkarsa.com/tools/ocr_receipt` saat dicek masih fallback ke SPA HTML, belum JSON API.
 - [ ] `POST /tools/parse_transaction`
 - [ ] `POST /api/v1/rag/search`
 - [ ] `POST /api/v1/rag/embed`

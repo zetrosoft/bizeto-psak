@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import MAX_UPLOAD_BYTES, SUPPORTED_EXTENSIONS
 from app.schemas import (
+    ChatRequest,
+    ChatResponse,
     CodeScanRequest,
     PreviewResponse,
     ProcessResponse,
@@ -21,6 +23,7 @@ from app.schemas import (
 from app.services.checksum import sha256_bytes
 from app.services.document_router import detect_document_type
 from app.services.ledger_parser import parse_csv_ledger, unsupported_xlsx_preview
+from app.services.mcp_chat_client import build_bizeto_chat_system_prompt, call_mcp_chat
 from app.services.smart_note_parser import classify_note
 from app.storage import decode_json, document_storage_path, get_document, insert_document, row_to_document, update_document
 
@@ -39,6 +42,22 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "bizeto-psak-backend"}
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> dict:
+    system_prompt = build_bizeto_chat_system_prompt(
+        locale=request.locale,
+        has_source=request.has_source,
+        phase=request.phase,
+        source_summary=request.source_summary,
+    )
+    history = "\n".join(
+        f"{item.get('role', 'user')}: {item.get('content', '')}"
+        for item in request.history[-8:]
+    )
+    prompt = f"Riwayat percakapan:\n{history}\n\nPesan user terbaru:\n{request.message}".strip()
+    return call_mcp_chat(prompt, system_prompt)
 
 
 @app.post("/api/documents/upload", response_model=UploadedDocument)

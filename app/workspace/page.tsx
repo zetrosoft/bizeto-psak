@@ -76,6 +76,12 @@ type ChatMessage = {
   actions?: "confirm_process";
 };
 
+type ChatApiResponse = {
+  response: string;
+  provider: string;
+  fallback: boolean;
+};
+
 const copy = {
   en: {
     workspace: "Workspace",
@@ -242,7 +248,8 @@ export default function WorkspacePage() {
     }
 
     setPhase(hasSource ? "source_review" : "discussion");
-    pushMessage("assistant", buildDiscussionReply(text, locale, hasSource));
+    const aiReply = await askAiChat(text);
+    pushMessage("assistant", aiReply);
   }
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
@@ -337,6 +344,23 @@ export default function WorkspacePage() {
   function respondWithSourcePlan(source: WorkspaceSource, context?: string) {
     const message = buildSourcePlan(source, locale, context);
     pushMessage("assistant", message, source.id, "confirm_process");
+  }
+
+  async function askAiChat(text: string) {
+    try {
+      const response = await postJson<ChatApiResponse>("/api/chat", {
+        message: text,
+        locale,
+        has_source: hasSource,
+        source_summary: selectedSource ? `${selectedSource.label} · ${selectedSource.detail}` : null,
+        phase,
+        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+      });
+      return response.response;
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "AI chat failed");
+      return buildDiscussionReply(text, locale, hasSource);
+    }
   }
 
   return (

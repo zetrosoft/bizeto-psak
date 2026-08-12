@@ -104,3 +104,18 @@ class UrlInputRequest(BaseModel):
     url: str
     source_label: str = "URL"
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    locale: Literal["en", "id"] = "id"
+    has_source: bool = False
+    source_summary: str | None = None
+    phase: str = "discussion"
+    history: list[dict[str, str]] = Field(default_factory=list)
+
+
+class ChatResponse(BaseModel):
+    response: str
+    provider: str
+    fallback: bool = False

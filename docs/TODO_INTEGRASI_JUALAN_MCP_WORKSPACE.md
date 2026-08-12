@@ -22,6 +22,7 @@ Update 2026-08-11:
 - [x] Terapkan intent gate: chat tanpa attachment/URL adalah diskusi, bukan proses data.
 - [x] Terapkan source gate: attachment/URL hanya quick check, summary, dan rencana proses sebelum konfirmasi.
 - [x] Koreksi scope UI: layout Workspace tetap mengikuti rancangan AI Studio-style; fitur intent-gate ditanam di balik UI tanpa redesign besar.
+- [x] Hubungkan chat diskusi ke AI melalui backend `/api/chat` -> `https://mcp.samkarsa.com/api/chat`.
 - [ ] Hubungkan OCR, AI Vision, parser, mapping jurnal, dan MCP adapter nyata.
 - [x] Implement preview isi file nyata untuk CSV baseline.
 - [x] Implement konfirmasi/reject dengan draft storage dan audit trail baseline.
@@ -276,15 +277,16 @@ Endpoint awal:
 
 TODO:
 
-- [ ] Buat adapter pemanggil MCP REST bridge.
+- [x] Buat adapter pemanggil MCP REST bridge untuk chat.
 - [ ] Tambahkan health check MCP.
-- [ ] Tambahkan timeout dan retry terbatas.
+- [x] Tambahkan timeout baseline untuk chat MCP.
 - [ ] Tambahkan limit ukuran payload.
 - [ ] Tambahkan fallback jika MCP tidak tersedia.
 - [ ] Simpan metadata provider: model, tool, latency, token usage jika tersedia.
 
 Target MCP endpoints:
 
+- [x] `POST /api/chat`
 - [ ] `POST /tools/ocr_receipt`
 - [ ] `POST /tools/parse_transaction`
 - [ ] `POST /api/v1/rag/search`

@@ -8,6 +8,8 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "bizeto_psak_drafts.sqlite3"
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MCP_BASE_URL = "https://mcp.samkarsa.com"
+MCP_CHAT_TIMEOUT_SECONDS = 45
 
 SUPPORTED_EXTENSIONS = {
     ".csv",

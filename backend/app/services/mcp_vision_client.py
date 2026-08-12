@@ -25,7 +25,19 @@ def call_mcp_ocr_receipt(file_bytes: bytes, mime_type: str) -> dict:
     )
     try:
         with urllib.request.urlopen(request, timeout=max(MCP_CHAT_TIMEOUT_SECONDS, 90)) as response:
-            body = json.loads(response.read().decode("utf-8"))
+            content_type = response.headers.get("content-type", "")
+            raw_body = response.read().decode("utf-8")
+            if "application/json" not in content_type.lower():
+                return {
+                    "text": (
+                        "OCR Vision MCP belum tersedia untuk production route. "
+                        f"Endpoint {MCP_BASE_URL.rstrip('/')}/tools/ocr_receipt mengembalikan "
+                        f"content-type `{content_type}` sehingga kemungkinan masih diarahkan ke UI/admin panel, bukan REST tools API."
+                    ),
+                    "provider": "mcp_tools_route_unavailable",
+                    "fallback": True,
+                }
+            body = json.loads(raw_body)
             content = body.get("content") or []
             text = content[0].get("text", "") if content else ""
             return {

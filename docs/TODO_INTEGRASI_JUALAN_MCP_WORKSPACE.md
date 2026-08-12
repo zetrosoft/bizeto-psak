@@ -21,6 +21,7 @@ Update 2026-08-11:
 - [x] Hapus mock data UI; Workspace dimulai dari data kosong.
 - [x] Terapkan intent gate: chat tanpa attachment/URL adalah diskusi, bukan proses data.
 - [x] Terapkan source gate: attachment/URL hanya quick check, summary, dan rencana proses sebelum konfirmasi.
+- [x] Koreksi scope UI: layout Workspace tetap mengikuti rancangan AI Studio-style; fitur intent-gate ditanam di balik UI tanpa redesign besar.
 - [ ] Hubungkan OCR, AI Vision, parser, mapping jurnal, dan MCP adapter nyata.
 - [x] Implement preview isi file nyata untuk CSV baseline.
 - [x] Implement konfirmasi/reject dengan draft storage dan audit trail baseline.

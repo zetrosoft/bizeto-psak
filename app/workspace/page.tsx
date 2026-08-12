@@ -5,9 +5,14 @@ import {
   ArrowLeft,
   ArrowUp,
   BadgeCheck,
+  BookOpen,
   Check,
   CircleAlert,
+  ClipboardList,
   FileSpreadsheet,
+  Gauge,
+  Grid2X2,
+  History,
   Languages,
   Laptop,
   Mic2,
@@ -19,6 +24,7 @@ import {
   Sun,
   Upload,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { ChangeEvent, RefObject, useEffect, useMemo, useRef, useState } from "react";
 
@@ -96,6 +102,16 @@ const copy = {
     confirmResult: "Confirm result",
     confirmed: "Confirmed",
     reset: "New session",
+    explore: "Explore",
+    process: "Process",
+    manage: "Manage",
+    playground: "Playground",
+    history: "History",
+    newWorkspace: "New workspace",
+    myWorkspaces: "My workspaces",
+    templates: "Templates",
+    entities: "Entities",
+    documentation: "Documentation",
     uploadFailed: "Upload failed. The file is kept only in this browser session.",
     discussionPrefix: "As a discussion, here is my take:",
     inputModes: {
@@ -128,6 +144,16 @@ const copy = {
     confirmResult: "Konfirmasi hasil",
     confirmed: "Terkonfirmasi",
     reset: "Sesi baru",
+    explore: "Explore",
+    process: "Process",
+    manage: "Manage",
+    playground: "Playground",
+    history: "History",
+    newWorkspace: "Sesi baru",
+    myWorkspaces: "Workspace saya",
+    templates: "Template",
+    entities: "Entitas",
+    documentation: "Dokumentasi",
     uploadFailed: "Upload gagal. File hanya tersimpan di sesi browser ini.",
     discussionPrefix: "Sebagai diskusi, pandangan saya:",
     inputModes: {
@@ -160,6 +186,7 @@ export default function WorkspacePage() {
   );
   const hasSource = sources.length > 0;
   const showInspector = hasSource && inspector;
+  const startMode = messages.length === 0 && !hasSource;
 
   useEffect(() => {
     const savedLocale = localStorage.getItem("bizeto-locale") as Locale | null;
@@ -340,14 +367,18 @@ export default function WorkspacePage() {
       <div className={`grid h-[calc(100vh-70px)] min-h-0 ${showInspector ? "lg:grid-cols-[236px_minmax(520px,1fr)_328px]" : "lg:grid-cols-[236px_minmax(520px,1fr)]"}`}>
         <aside className="hidden h-full min-h-0 border-r border-line bg-panel/45 p-4 lg:flex lg:flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <WorkspaceSidebar
-              locale={locale}
-              t={t}
-              phase={phase}
-              sources={sources}
-              selectedSourceId={selectedSource?.id ?? null}
-              setSelectedSourceId={setSelectedSourceId}
-            />
+            {startMode ? (
+              <StartSidebar t={t} />
+            ) : (
+              <WorkspaceSidebar
+                locale={locale}
+                t={t}
+                phase={phase}
+                sources={sources}
+                selectedSourceId={selectedSource?.id ?? null}
+                setSelectedSourceId={setSelectedSourceId}
+              />
+            )}
           </div>
           <SidebarFooter locale={locale} theme={theme} setTheme={setThemeState} />
         </aside>
@@ -355,8 +386,18 @@ export default function WorkspacePage() {
         <section className="flex h-full min-w-0 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 md:px-8 lg:px-10">
             <div className="mx-auto flex min-h-full max-w-4xl flex-col">
-              {messages.length === 0 ? (
-                <EmptyRoom t={t} />
+              {startMode ? (
+                <StartRoom
+                  t={t}
+                  locale={locale}
+                  attachOpen={attachOpen}
+                  setAttachOpen={setAttachOpen}
+                  chatDraft={chatDraft}
+                  updateChatDraft={updateChatDraft}
+                  chatRef={chatRef}
+                  onFile={onFile}
+                  onSend={sendMessage}
+                />
               ) : (
                 <div className="space-y-4 pb-6">
                   {messages.map((message) => (
@@ -387,18 +428,20 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          <Composer
-            t={t}
-            locale={locale}
-            attachOpen={attachOpen}
-            setAttachOpen={setAttachOpen}
-            chatDraft={chatDraft}
-            updateChatDraft={updateChatDraft}
-            chatRef={chatRef}
-            onFile={onFile}
-            onSend={sendMessage}
-            onReset={reset}
-          />
+          {!startMode && (
+            <Composer
+              t={t}
+              locale={locale}
+              attachOpen={attachOpen}
+              setAttachOpen={setAttachOpen}
+              chatDraft={chatDraft}
+              updateChatDraft={updateChatDraft}
+              chatRef={chatRef}
+              onFile={onFile}
+              onSend={sendMessage}
+              onReset={reset}
+            />
+          )}
         </section>
 
         {showInspector && (
@@ -416,16 +459,128 @@ export default function WorkspacePage() {
   );
 }
 
-function EmptyRoom({ t }: { t: WorkspaceCopy }) {
+function StartRoom(props: {
+  t: WorkspaceCopy;
+  locale: Locale;
+  attachOpen: boolean;
+  setAttachOpen: (open: boolean) => void;
+  chatDraft: string;
+  updateChatDraft: (value: string) => void;
+  chatRef: RefObject<HTMLTextAreaElement | null>;
+  onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
+  onSend: () => void | Promise<void>;
+}) {
+  const { t, locale, attachOpen, setAttachOpen, chatDraft, updateChatDraft, chatRef, onSend } = props;
   return (
-    <div className="flex min-h-[calc(100vh-230px)] flex-col items-center justify-center text-center">
-      <div className="mb-5 grid size-12 place-items-center rounded-2xl bg-gold/10 text-gold">
-        <Sparkles size={22} />
+    <div className="flex min-h-[calc(100vh-170px)] flex-col items-center justify-center text-center">
+      <div className="mb-7">
+        <p className="mb-4 text-[10px] font-bold uppercase tracking-[.2em] text-muted-foreground/85">{t.aiName}</p>
+        <h1 className="text-3xl font-medium tracking-[-.035em] md:text-[44px] md:leading-tight">{t.title}</h1>
+        <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">{t.subtitle}</p>
       </div>
-      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-muted-foreground/85">{t.aiName}</p>
-      <h1 className="mt-4 text-3xl font-medium tracking-[-.035em] md:text-[42px] md:leading-tight">{t.title}</h1>
-      <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">{t.subtitle}</p>
+      <div className="relative w-full max-w-4xl rounded-[18px] border border-line bg-panel p-4 text-left shadow-[0_28px_90px_rgba(0,0,0,.24)] ring-1 ring-gold/15 before:pointer-events-none before:absolute before:inset-[-1px] before:rounded-[18px] before:bg-[linear-gradient(90deg,rgba(12,143,124,.32),rgba(184,138,61,.28),rgba(80,112,255,.18))] before:opacity-40 before:blur-xl before:content-['']">
+        <div className="relative">
+          {attachOpen && (
+            <AttachMenu t={t} onFile={props.onFile} className="absolute bottom-16 left-4 z-10" />
+          )}
+          <textarea
+            ref={chatRef}
+            value={chatDraft}
+            onChange={(event) => updateChatDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void onSend();
+              }
+            }}
+            placeholder={t.placeholder}
+            rows={3}
+            className="max-h-[220px] min-h-28 w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground"
+          />
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setAttachOpen(!attachOpen)} className={`grid size-9 place-items-center rounded-full border border-line ${attachOpen ? "bg-gold text-white" : "bg-muted text-muted-foreground hover:text-ink"}`} aria-label="Add source">
+                <Plus size={17} />
+              </button>
+              <button className="grid size-9 place-items-center rounded-full border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Voice input">
+                <Mic2 size={16} />
+              </button>
+              <label className="grid size-9 cursor-pointer place-items-center rounded-full border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Upload file">
+                <Upload size={16} />
+                <input type="file" className="sr-only" accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,audio/*" onChange={props.onFile} />
+              </label>
+            </div>
+            <button onClick={() => void onSend()} className="grid size-10 place-items-center rounded-lg bg-gold text-white" aria-label="Send">
+              <ArrowUp size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 flex max-w-4xl flex-wrap justify-center gap-2">
+        {[
+          locale === "id" ? "Diskusi akuntansi" : "Accounting discussion",
+          locale === "id" ? "Upload bukti" : "Attach evidence",
+          "URL",
+          "PSAK",
+          locale === "id" ? "Review sebelum proses" : "Review before process",
+        ].map((chip) => (
+          <span key={chip} className="rounded-full bg-panel px-4 py-2 text-xs font-semibold text-muted-foreground">{chip}</span>
+        ))}
+      </div>
       <p className="mt-8 rounded-full border border-line bg-panel px-4 py-2 text-xs font-semibold text-muted-foreground">{t.emptyHint}</p>
+    </div>
+  );
+}
+
+function StartSidebar({ t }: { t: WorkspaceCopy }) {
+  return (
+    <div className="space-y-7">
+      <SidebarGroup title={t.explore} items={[
+        { icon: Sparkles, label: t.playground },
+        { icon: History, label: t.history },
+      ]} />
+      <SidebarGroup title={t.process} items={[
+        { icon: Plus, label: t.newWorkspace, active: true },
+        { icon: ClipboardList, label: t.myWorkspaces },
+        { icon: Grid2X2, label: t.templates },
+      ]} />
+      <SidebarGroup title={t.manage} items={[
+        { icon: Gauge, label: t.entities },
+        { icon: Settings, label: "COA" },
+        { icon: BookOpen, label: t.documentation },
+      ]} />
+    </div>
+  );
+}
+
+function SidebarGroup({ title, items }: { title: string; items: Array<{ icon: LucideIcon; label: string; active?: boolean }> }) {
+  return (
+    <div>
+      <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">{title}</p>
+      <div className="space-y-1">
+        {items.map(({ icon: Icon, label, active }) => (
+          <button key={label} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${active ? "bg-muted text-ink" : "text-muted-foreground/80 hover:bg-muted hover:text-ink"}`}>
+            <Icon size={15} />
+            <span className="truncate">{label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AttachMenu({ t, onFile, className = "" }: { t: WorkspaceCopy; onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>; className?: string }) {
+  return (
+    <div className={`${className} w-56 rounded-xl border border-line bg-panel p-2 shadow-panel`}>
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-ink">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Upload size={15} /></span>
+        <span>{t.inputModes.upload}</span>
+        <input type="file" className="sr-only" accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,audio/*" onChange={onFile} />
+      </label>
+      <div className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Sparkles size={15} /></span>
+        <span>{t.inputModes.url}</span>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,10 @@
+.next/
+node_modules/
+.pnpm-store/
+tsconfig.tsbuildinfo
+.DS_Store
+backend/.data/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

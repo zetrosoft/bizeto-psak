@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 25% 97%;
+  --foreground: 222 32% 12%;
+  --card: 0 0% 100%;
+  --muted: 215 20% 94%;
+  --muted-foreground: 215 14% 42%;
+  --border: 215 18% 87%;
+  --brand-gold: 38 57% 43%;
+  --brand-teal: 170 65% 31%;
+}
+
+.dark {
+  --background: 222 30% 8%;
+  --foreground: 210 28% 94%;
+  --card: 221 25% 12%;
+  --muted: 218 22% 17%;
+  --muted-foreground: 214 16% 63%;
+  --border: 216 20% 23%;
+  --brand-gold: 42 69% 64%;
+  --brand-teal: 169 68% 64%;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: hsl(var(--background)); }
+body { margin: 0; background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: Arial, Helvetica, sans-serif; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+::selection { background: hsl(var(--brand-gold) / .28); }
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}

@@ -1,0 +1,25 @@
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+DATA_DIR = BACKEND_ROOT / ".data"
+UPLOAD_DIR = DATA_DIR / "uploads"
+DB_PATH = DATA_DIR / "bizeto_psak_drafts.sqlite3"
+
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+SUPPORTED_EXTENSIONS = {
+    ".csv",
+    ".xlsx",
+    ".xls",
+    ".pdf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".txt",
+    ".md",
+    ".m4a",
+    ".mp3",
+    ".wav",
+}

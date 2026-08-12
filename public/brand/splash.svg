@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-label="Bizeto PSAK splash">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="40%" r="55%"><stop stop-color="#1C4A4D" stop-opacity=".9"/><stop offset="1" stop-color="#0A1016" stop-opacity="0"/></radialGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F0D38A"/><stop offset="1" stop-color="#B88A3D"/></linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#0A1016"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <g transform="translate(800 390)">
+    <rect x="-76" y="-76" width="152" height="152" rx="42" fill="url(#mark)"/>
+    <path d="M-38-42h29c20 0 32 9 32 22 0 8-4 13-12 17 10 3 16 10 16 20 0 15-13 24-34 24h-31v-83zm14 12v20h13c10 0 15-4 15-10 0-7-5-10-15-10h-13zm0 32v21h16c11 0 17-4 17-11 0-7-6-10-17-10h-16z" fill="#071318"/>
+    <path d="M-55-42v83M-55 0h17M23-30h24M23 30h24" stroke="#FFF1C5" stroke-width="6" stroke-linecap="round" opacity=".9"/>
+  </g>
+  <text x="800" y="575" text-anchor="middle" fill="#F3F0E8" font-family="Inter,Arial,sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5">Bizeto <tspan fill="#E1BC68">PSAK</tspan></text>
+  <text x="800" y="625" text-anchor="middle" fill="#A8B4B9" font-family="Inter,Arial,sans-serif" font-size="20" letter-spacing="2">ACCOUNTING, CLEARLY UNDERSTOOD</text>
+  <rect x="748" y="678" width="104" height="4" rx="2" fill="#E1BC68" opacity=".9"/>
+</svg>

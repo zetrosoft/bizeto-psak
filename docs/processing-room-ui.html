@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspace — UI/UX Preview</title>
+  <style>
+    :root { --bg:#0c1117; --panel:#121a23; --panel-2:#17232e; --line:#273544; --text:#e8f0f5; --muted:#8fa3b3; --cyan:#68e6ce; --amber:#f2bf69; --red:#f28181; --blue:#81b8ff; --shadow:0 18px 60px #0006; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--text); background:radial-gradient(circle at 70% -10%,#1d3a43 0,#0c1117 38rem),var(--bg); font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif; }
+    button { color:inherit; font:inherit; cursor:pointer; }
+    .app { min-height:100vh; display:grid; grid-template-columns:236px minmax(540px,1fr) 340px; grid-template-rows:72px 1fr; }
+    .topbar { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; padding:0 28px; border-bottom:1px solid var(--line); background:#0e161eeb; backdrop-filter:blur(18px); }
+    .brand { display:flex; gap:12px; align-items:center; font-weight:700; letter-spacing:.01em; } .mark { width:34px;height:34px;border-radius:11px; display:grid;place-items:center;background:linear-gradient(135deg,var(--cyan),#4b9be8);color:#061015;font-weight:900;box-shadow:0 0 25px #68e6ce55; }
+    .context { display:flex; gap:10px; align-items:center; color:var(--muted); } .context strong { color:var(--text); font-weight:600; }
+    .top-actions { display:flex; gap:10px; align-items:center; } .pill,.icon-btn,.outline,.primary,.danger { border:1px solid var(--line); border-radius:10px; background:#15212b; padding:9px 12px; } .icon-btn { padding:9px 11px; color:var(--muted); } .avatar { width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#d9a85b;color:#101820;font-weight:800; }
+    .sidebar,.inspector { background:#0f171f99; padding:24px 16px; } .sidebar { border-right:1px solid var(--line); } .inspector { border-left:1px solid var(--line); padding:22px 20px; }
+    .eyebrow { color:#6e8493; font-size:10px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; } .new-session { width:100%; border:0; padding:12px; border-radius:11px; margin:10px 0 24px; background:var(--cyan); color:#071117; font-weight:800; } .nav { display:grid; gap:5px; margin-bottom:28px; } .nav button { border:0; text-align:left; border-radius:9px; padding:10px 12px; color:var(--muted); background:transparent; } .nav button.active,.nav button:hover { color:var(--text); background:#1a2935; } .nav .count { float:right; color:#72909f; }
+    .mini-card { padding:13px; border:1px solid var(--line); border-radius:12px; background:#121d26; margin-top:10px; } .mini-card b { display:block; font-size:12px; margin-bottom:4px; } .mini-card small { color:var(--muted); } .mini-status { margin-top:10px; color:var(--amber); font-size:11px; }
+    .main { min-width:0; display:flex; flex-direction:column; max-width:900px; width:100%; margin:auto; padding:28px 36px 30px; } .hero { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; } h1 { font-size:23px; margin:5px 0 7px; letter-spacing:-.03em; } .sub { color:var(--muted); } .live { display:flex;align-items:center;gap:7px;color:var(--cyan);font-size:12px; } .dot { width:7px;height:7px;background:var(--cyan);border-radius:50%;box-shadow:0 0 10px var(--cyan); }
+    .chat { display:grid; gap:14px; } .ai-msg { display:flex; gap:11px; align-items:flex-start; } .ai-orb { flex:none;width:29px;height:29px;border-radius:9px;background:#1c796f;display:grid;place-items:center;color:var(--cyan);font-weight:900; } .bubble { max-width:690px; padding:12px 15px; border:1px solid #26454c; border-radius:4px 14px 14px 14px; background:#13252a; } .bubble b { color:var(--cyan); }
+    .upload { margin-left:40px; border:1px solid #38505d; border-radius:15px; padding:16px; background:linear-gradient(120deg,#182631,#121a23); box-shadow:var(--shadow); } .file-head { display:flex; align-items:center; gap:12px; } .file-icon { width:39px;height:45px;border-radius:8px;display:grid;place-items:center;background:#1d6c73;color:#b5fff1;font-size:20px; } .file-name { flex:1; } .file-name b { display:block;font-size:14px; } .file-name small { color:var(--muted); } .tag { padding:4px 8px;border-radius:99px;background:#193932;color:var(--cyan);font-size:11px;font-weight:700; } .actions { display:flex;gap:8px;margin-top:16px;justify-content:flex-end; } .outline { color:#b9c9d3; } .primary { border-color:var(--cyan); background:var(--cyan); color:#081216; font-weight:800; } .primary:hover { filter:brightness(1.08); }
+    .result { margin-left:40px; border:1px solid #39535b; border-radius:15px; background:#111c25; overflow:hidden; } .result-top { padding:16px 18px;display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line); } .check { width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#1d635d;color:var(--cyan);font-weight:900; } .result-title { flex:1; } .result-title b { display:block; } .result-title small { color:var(--muted); } .ai-badge { color:var(--blue); background:#182e49; border-radius:99px;padding:4px 8px;font-size:10px;font-weight:800; } .metrics { display:grid;grid-template-columns:repeat(4,1fr); padding:15px 18px;gap:10px; } .metric { padding-right:10px;border-right:1px solid var(--line); } .metric:last-child { border:0; } .metric label { display:block;color:var(--muted);font-size:11px;margin-bottom:3px; } .metric strong { font-size:15px; } .good { color:var(--cyan); }.warn { color:var(--amber); }.bad { color:var(--red); }
+    .confidence { padding:0 18px 16px; } .confidence-head { display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-bottom:6px; } .bar { height:6px;border-radius:9px;background:#26333c;overflow:hidden; } .bar i { display:block;width:87%;height:100%;border-radius:9px;background:linear-gradient(90deg,var(--cyan),#91e7a4); } .result-actions { display:flex;gap:8px;padding:12px 18px;background:#0e171f;justify-content:flex-end; }
+    .composer { margin:22px 0 0 40px; border:1px solid #30414e; border-radius:14px; background:#111b23; padding:11px 13px; display:flex;align-items:center;gap:11px; } .composer input { flex:1; background:none;border:0;outline:0;color:var(--muted); } .attach { border:0;background:transparent;color:var(--muted);font-size:20px; } .send { border:0;background:var(--cyan);color:#081216;border-radius:8px;width:30px;height:30px;font-weight:900; }
+    .inspect-head { display:flex;justify-content:space-between;align-items:center;margin-bottom:18px; } .inspect-head h2 { font-size:15px;margin:0; } .close { background:transparent;border:0;color:var(--muted);font-size:20px; } .tabs { display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:#0b1117;border-radius:8px;padding:3px;margin-bottom:18px; } .tabs button { border:0;background:transparent;color:var(--muted);font-size:11px;padding:8px 2px;border-radius:6px; } .tabs button.active { background:#233541;color:var(--text); } .paper { height:202px;border:1px solid #45535d;background:#e8e1d3;color:#253038;border-radius:7px;padding:18px;box-shadow:0 10px 24px #0004;position:relative;overflow:hidden; } .paper:after { content:"";position:absolute;right:-40px;top:-40px;width:120px;height:120px;border-radius:50%;background:#cabda5;opacity:.5; } .paper small { font-size:8px;letter-spacing:.16em; } .paper h3 { font:700 17px Georgia,serif;margin:10px 0 15px; } .paper .line { height:5px;background:#59615d33;margin:9px 0;width:80%; } .paper .total { border-top:1px solid #60635e;margin-top:18px;padding-top:9px;display:flex;justify-content:space-between;font-weight:800; } .evidence { margin-top:11px;color:var(--muted);font-size:11px; } .evidence span { color:var(--cyan); } .section { border-top:1px solid var(--line);padding-top:18px;margin-top:20px; } .section h3 { font-size:12px;margin:0 0 12px; } .fact { display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:12px; } .fact span:first-child { color:var(--muted); }.fact span:last-child { text-align:right; } .exception { padding:11px;border:1px solid #5b482e;border-radius:9px;background:#2c2418;color:#edce91;font-size:11px; } .legend { display:flex;gap:12px;color:var(--muted);font-size:10px;margin-top:14px; } .legend span:before { content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px; } .legend .l-good{color:var(--cyan)}.legend .l-warn{color:var(--amber)}
+    .modal-wrap { display:none;position:fixed;inset:0;background:#05090dcc;backdrop-filter:blur(8px);z-index:5;padding:6vh 8vw; } .modal-wrap.open { display:block; } .modal { height:88vh;display:flex;flex-direction:column;border:1px solid #3a5660;border-radius:18px;background:#101a22;box-shadow:0 30px 100px #000b;overflow:hidden; } .modal header { padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between; } .modal header h2 { margin:0;font-size:17px; } .modal-body { display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1;min-height:0;padding:20px;overflow:auto; } .preview-pane { border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0c1319; } .preview-pane h3 { font-size:12px;padding:12px 15px;margin:0;border-bottom:1px solid var(--line); } .ledger { width:100%;border-collapse:collapse;font-size:11px; } .ledger th,.ledger td { text-align:left;padding:10px;border-bottom:1px solid #25323d; } .ledger th { color:var(--muted);font-weight:500;background:#121d25; } .ledger tr.flag td { color:#edce91;background:#2a2116; } .modal footer { padding:13px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px; }
+    @media (max-width:1100px) { .app { grid-template-columns:210px minmax(500px,1fr); }.inspector { display:none; } }
+    @media (max-width:700px) { .app { display:block; }.topbar{padding:12px 16px;height:auto;gap:15px;flex-wrap:wrap;}.context{order:3;width:100%;}.sidebar{display:none;}.main{padding:22px 15px;}.metrics{grid-template-columns:repeat(2,1fr);}.metric:nth-child(2){border:0}.upload,.result,.composer{margin-left:0;}.modal-wrap{padding:3vh 3vw;}.modal-body{grid-template-columns:1fr;}.modal{height:94vh;} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><div class="mark">✦</div><span>Workspace</span></div>
+      <div class="context"><span>Entitas</span><strong>PT Manufaktur Nusantara</strong><span>·</span><span>Periode</span><strong>Juli 2026</strong></div>
+      <div class="top-actions"><button class="icon-btn">?</button><button class="icon-btn">⌘ K</button><div class="avatar">AR</div></div>
+    </header>
+    <aside class="sidebar">
+      <button class="new-session">＋ Sesi baru</button>
+      <div class="eyebrow">Workspace</div>
+      <nav class="nav">
+        <button class="active">◈ Semua sesi <span class="count">12</span></button>
+        <button>◷ Draft lokal <span class="count">3</span></button>
+        <button>◌ Menunggu saya <span class="count">5</span></button>
+        <button>⚠ Perlu perhatian <span class="count">2</span></button>
+        <button>✓ Final <span class="count">48</span></button>
+      </nav>
+      <div class="eyebrow">Sesi terakhir</div>
+      <div class="mini-card"><b>Rekonsiliasi bank</b><small>2 sumber · 18 menit lalu</small><div class="mini-status">● Menunggu konfirmasi</div></div>
+      <div class="mini-card"><b>Invoice bahan baku</b><small>14 dokumen · Kemarin</small><div class="mini-status" style="color:var(--cyan)">● Sudah diposting</div></div>
+    </aside>
+    <main class="main">
+      <div class="hero"><div><div class="eyebrow">AI accounting workspace</div><h1>Halo, Andi. Mari rapikan data hari ini.</h1><div class="sub">Unggah sumber transaksi. AI akan membaca, menguji, dan menyiapkan dasar jurnal.</div></div><div class="live"><i class="dot"></i> Semua sistem normal</div></div>
+      <section class="chat">
+        <div class="ai-msg"><div class="ai-orb">✦</div><div class="bubble"><b>Senior Akuntan AI</b><br>Siap memproses. Anda tidak perlu menulis command—unggah file, lalu tekan <b>Proses</b>.</div></div>
+        <article class="upload">
+          <div class="file-head"><div class="file-icon">▤</div><div class="file-name"><b>buku-besar-juli-2026.xlsx</b><small>XLSX · 2.4 MB · 2.431 baris · baru saja diunggah</small></div><span class="tag">SIAP DIPROSES</span></div>
+          <div class="actions"><button class="outline" onclick="openPreview()">Preview sumber</button><button class="primary" id="processBtn" onclick="processFile()">✦ Proses</button></div>
+        </article>
+        <article class="result" id="resultCard">
+          <div class="result-top"><div class="check">✓</div><div class="result-title"><b>Analisis selesai · Buku Besar Juli</b><small>General Ledger Tool · Rule engine + AI classification · 42 detik</small></div><span class="ai-badge">TAHAP 1 / 6</span></div>
+          <div class="metrics"><div class="metric"><label>Baris terbaca</label><strong>2.431</strong></div><div class="metric"><label>Debit</label><strong>Rp 4,82 M</strong></div><div class="metric"><label>Kredit</label><strong>Rp 4,81 M</strong></div><div class="metric"><label>Selisih</label><strong class="warn">Rp 250 rb</strong></div></div>
+          <div class="confidence"><div class="confidence-head"><span>Keyakinan klasifikasi</span><b class="good">87% · baik</b></div><div class="bar"><i></i></div><div class="legend"><span class="l-good">2.120 cocok otomatis</span><span class="l-warn">278 perlu review</span></div></div>
+          <div class="result-actions"><button class="outline" onclick="openPreview()">Preview hasil</button><button class="outline">⚠ Lihat 4 exception</button><button class="primary" onclick="confirmResult(this)">Konfirmasi ekstraksi</button></div>
+        </article>
+      </section>
+      <div class="composer"><button class="attach">＋</button><input placeholder="Catatan opsional untuk konteks proses..." /><button class="send">↑</button></div>
+    </main>
+    <aside class="inspector">
+      <div class="inspect-head"><div><div class="eyebrow">Inspector</div><h2>Bukti terpilih</h2></div><button class="close">×</button></div>
+      <div class="tabs"><button class="active">Sumber</button><button>Resume</button><button>Jurnal</button><button>Audit</button></div>
+      <div class="paper"><small>PT MANUFAKTUR NUSANTARA</small><h3>GENERAL LEDGER</h3><div class="line"></div><div class="line" style="width:58%"></div><div class="line" style="width:91%"></div><div class="line" style="width:76%"></div><div class="total"><span>Total Debit</span><span>Rp 4.820.000.000</span></div></div>
+      <div class="evidence">Evidence locator: <span>Sheet “Juli” · baris 1–2.431</span></div>
+      <div class="section"><h3>Field hasil ekstraksi</h3><div class="fact"><span>Periode</span><span>01–31 Jul 2026</span></div><div class="fact"><span>Jenis data</span><span>General Ledger</span></div><div class="fact"><span>Versi rule</span><span>PSAK policy v1.4</span></div><div class="fact"><span>Status</span><span class="good">Siap dikonfirmasi</span></div></div>
+      <div class="section"><h3>Perlu perhatian</h3><div class="exception">Debit dan kredit belum seimbang <b>Rp 250.000</b>. AI menemukan 2 baris tanpa pasangan akun. <u>Lihat baris</u></div></div>
+    </aside>
+  </div>
+  <div class="modal-wrap" id="previewModal" onclick="if(event.target===this)closePreview()">
+    <div class="modal"><header><h2>Preview sumber & hasil normalisasi</h2><button class="close" onclick="closePreview()">×</button></header><div class="modal-body"><div class="preview-pane"><h3>SUMBER ASLI · buku-besar-juli-2026.xlsx</h3><table class="ledger"><thead><tr><th>Baris</th><th>Tanggal</th><th>Keterangan</th><th>Debit</th><th>Kredit</th></tr></thead><tbody><tr><td>001</td><td>01/07/26</td><td>Pembelian bahan baku</td><td>12.500.000</td><td>—</td></tr><tr><td>002</td><td>01/07/26</td><td>Utang usaha — PT Baja</td><td>—</td><td>12.500.000</td></tr><tr class="flag"><td>087</td><td>08/07/26</td><td>Biaya operasional lokasi B</td><td>5.000.000</td><td>—</td></tr><tr><td>088</td><td>08/07/26</td><td>Kas kecil</td><td>—</td><td>4.750.000</td></tr></tbody></table></div><div class="preview-pane"><h3>HASIL AI · normalized facts</h3><table class="ledger"><thead><tr><th>Baris</th><th>Usulan akun</th><th>Status</th><th>Evidence</th></tr></thead><tbody><tr><td>001</td><td>Persediaan Bahan Baku</td><td class="good">Cocok</td><td>Sheet!A1:E1</td></tr><tr><td>002</td><td>Utang Usaha</td><td class="good">Cocok</td><td>Sheet!A2:E2</td></tr><tr class="flag"><td>087</td><td>Beban Operasional / Sewa</td><td class="warn">Review</td><td>Sheet!A87:E87</td></tr><tr><td>088</td><td>Kas / Bank</td><td class="good">Cocok</td><td>Sheet!A88:E88</td></tr></tbody></table></div></div><footer><button class="outline" onclick="closePreview()">Tutup preview</button><button class="primary" onclick="closePreview();confirmResult(document.querySelector('.result-actions .primary'))">Konfirmasi hasil</button></footer></div>
+  </div>
+  <script>
+    function processFile(){ const b=document.getElementById('processBtn'); b.textContent='◌ Memproses...'; b.disabled=true; setTimeout(()=>{b.textContent='✓ Selesai'; b.style.background='var(--panel-2)'; b.style.color='var(--cyan)';},900); }
+    function openPreview(){ document.getElementById('previewModal').classList.add('open'); }
+    function closePreview(){ document.getElementById('previewModal').classList.remove('open'); }
+    function confirmResult(button){ button.textContent='✓ Terkonfirmasi'; button.disabled=true; button.style.background='#1c4f4b'; button.style.color='var(--cyan)'; document.querySelector('.result-title small').textContent='Ekstraksi dikonfirmasi · menunggu Accounting Mapping tahap 2'; }
+  </script>
+</body>
+</html>

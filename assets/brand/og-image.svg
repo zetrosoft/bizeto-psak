@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Bizeto PSAK — accounting workspace">
+  <defs>
+    <linearGradient id="bg" x1="1200" y1="0" x2="0" y2="630" gradientUnits="userSpaceOnUse"><stop stop-color="#18373B"/><stop offset=".52" stop-color="#0E171F"/><stop offset="1" stop-color="#0A1016"/></linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F0D38A"/><stop offset="1" stop-color="#B88A3D"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1000" cy="80" r="240" fill="#8BF2D8" opacity=".05"/>
+  <circle cx="1100" cy="510" r="310" fill="#4FB5D9" opacity=".05"/>
+  <path d="M0 536h1200" stroke="#2B3B47"/>
+  <g transform="translate(96 142)">
+    <rect width="124" height="124" rx="34" fill="url(#mark)"/>
+    <path d="M38 20h29c20 0 32 9 32 22 0 8-4 13-12 17 10 3 16 10 16 20 0 15-13 24-34 24H38V20zm14 12v20h13c10 0 15-4 15-10 0-7-5-10-15-10H52zm0 32v21h16c11 0 17-4 17-11 0-7-6-10-17-10H52z" fill="#071318"/>
+    <path d="M24 20v83M24 62h17M95 32h24M95 94h24" stroke="#FFF1C5" stroke-width="5" stroke-linecap="round" opacity=".9"/>
+  </g>
+  <text x="96" y="354" fill="#F3F0E8" font-family="Inter,Arial,sans-serif" font-size="66" font-weight="700" letter-spacing="-2">Bizeto <tspan fill="#E1BC68">PSAK</tspan></text>
+  <text x="100" y="406" fill="#E1BC68" font-family="Inter,Arial,sans-serif" font-size="19" font-weight="700" letter-spacing="3">ACCOUNTING, CLEARLY UNDERSTOOD</text>
+  <text x="100" y="462" fill="#B4C5CD" font-family="Inter,Arial,sans-serif" font-size="22">Turn documents, conversations, and evidence</text>
+  <text x="100" y="494" fill="#B4C5CD" font-family="Inter,Arial,sans-serif" font-size="22">into accounting decisions you can trust.</text>
+  <text x="100" y="574" fill="#8C9DA4" font-family="Inter,Arial,sans-serif" font-size="15" letter-spacing="1.5">PSAK-READY · EVIDENCE-FIRST · HUMAN-APPROVED</text>
+</svg>

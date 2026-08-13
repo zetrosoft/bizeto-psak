@@ -5,7 +5,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm config set ignore-scripts false && pnpm install --config.onlyBuiltDependencies=sharp || pnpm install --unsafe-perm
+RUN pnpm install --no-optional || pnpm install --ignore-scripts
 
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1

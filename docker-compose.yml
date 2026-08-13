@@ -1,29 +1,58 @@
 services:
-  bizeto-psak-app:
+  # 1. Frontend Next.js UI Service
+  bizeto-psak-frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: bizeto-psak-v2
+    container_name: bizeto-psak-frontend
     restart: always
     environment:
       - PORT=2550
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://jkk_user:jkk_super_secret_password@jkk-db:5432/bizeto_psak_db
-      - MCP_BASE_URL=https://mcp.samkarsa.com
-      - NEXT_PUBLIC_BACKEND_URL=https://psak.erpjkk.com/api
+      - NEXT_PUBLIC_BIZETO_API_URL=https://psak.erpjkk.com
+      - NEXT_PUBLIC_BACKEND_URL=https://psak.erpjkk.com
     networks:
       - erpnext-docker_traefik-ingress
       - jkk-apps-backend
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=erpnext-docker_traefik-ingress"
-      # Traefik Router HTTPS untuk Domain psak.erpjkk.com
-      - "traefik.http.routers.bizeto-psak-http.rule=Host(`psak.erpjkk.com`)"
-      - "traefik.http.routers.bizeto-psak-http.entrypoints=web"
-      - "traefik.http.routers.bizeto-psak-https.rule=Host(`psak.erpjkk.com`)"
-      - "traefik.http.routers.bizeto-psak-https.entrypoints=websecure"
-      - "traefik.http.routers.bizeto-psak-https.tls.certresolver=myresolver"
-      - "traefik.http.services.bizeto-psak.loadbalancer.server.port=2550"
+      # Traefik Router Frontend
+      - "traefik.http.routers.bizeto-frontend.rule=Host(`psak.erpjkk.com`)"
+      - "traefik.http.routers.bizeto-frontend.entrypoints=websecure"
+      - "traefik.http.routers.bizeto-frontend.tls.certresolver=myresolver"
+      - "traefik.http.routers.bizeto-frontend.priority=10"
+      - "traefik.http.services.bizeto-frontend.loadbalancer.server.port=2550"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # 2. Backend FastAPI Python Service
+  bizeto-psak-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bizeto-psak-backend
+    restart: always
+    environment:
+      - PORT=2551
+      - DATABASE_URL=postgresql://jkk_user:jkk_super_secret_password@jkk-db:5432/bizeto_psak_db
+      - MCP_SERVER_URL=https://mcp.samkarsa.com
+      - MCP_ENABLED=true
+    networks:
+      - erpnext-docker_traefik-ingress
+      - jkk-apps-backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=erpnext-docker_traefik-ingress"
+      # Traefik Router API Backend (/api/ dan /docs)
+      - "traefik.http.routers.bizeto-backend.rule=Host(`psak.erpjkk.com`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))"
+      - "traefik.http.routers.bizeto-backend.entrypoints=websecure"
+      - "traefik.http.routers.bizeto-backend.tls.certresolver=myresolver"
+      - "traefik.http.routers.bizeto-backend.priority=20"
+      - "traefik.http.services.bizeto-backend.loadbalancer.server.port=2551"
     logging:
       driver: json-file
       options:

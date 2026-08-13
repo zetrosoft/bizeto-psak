@@ -1,4 +1,4 @@
-name: Deploy Bizeto PSAK V2 to VPS erpnext
+name: Deploy Bizeto PSAK V2 Stack to VPS erpnext
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to erpnext VPS (psak.erpjkk.com)
+    name: Deploy Bizeto Group to erpnext VPS (psak.erpjkk.com)
     runs-on: ubuntu-latest
 
     steps:
@@ -25,7 +25,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || 64000 }}
           script: |
             set -e
-            echo "🚀 Starting Deployment for psak.erpjkk.com..."
+            echo "🚀 Starting Deployment for Bizeto PSAK Group (psak.erpjkk.com)..."
             
             DEPLOY_DIR="/root/bizeto-psak-deploy"
             
@@ -41,11 +41,11 @@ jobs:
             fi
             
             cd "$DEPLOY_DIR"
-            echo "Rebuilding and restarting bizeto-psak-v2 container..."
+            echo "Rebuilding and restarting bizeto-psak group containers..."
             docker compose up -d --build --force-recreate
             
-            echo "Verifying container status..."
+            echo "Verifying container group status..."
             sleep 5
-            docker ps | grep bizeto-psak-v2
+            docker ps | grep bizeto-psak
             
-            echo "✅ Deployment Successful!"
+            echo "✅ Bizeto Stack Deployment Successful!"

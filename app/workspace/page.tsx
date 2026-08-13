@@ -37,7 +37,7 @@ type SourceKind = "file" | "url";
 type WorkspacePhase = "idle" | "discussion" | "source_review" | "processing" | "review_required" | "confirmed" | "failed";
 type MessageRole = "user" | "assistant";
 
-const API_BASE = process.env.NEXT_PUBLIC_BIZETO_API_URL || "http://localhost:2551";
+const API_BASE = process.env.NEXT_PUBLIC_BIZETO_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 type BackendDocument = {
   id: string;

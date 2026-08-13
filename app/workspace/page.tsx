@@ -94,6 +94,11 @@ type ChatMessage = {
   role: MessageRole;
   content: string;
   sourceId?: string;
+  attachment?: {
+    filename: string;
+    previewUrl?: string;
+    sizeBytes: number;
+  };
   actions?: "confirm_process" | "select_entity";
   feedback?: "up" | "down";
   copied?: boolean;
@@ -345,20 +350,51 @@ export default function WorkspacePage() {
     input.style.overflowY = input.scrollHeight > 180 ? "auto" : "hidden";
   }
 
+  const [isAiThinking, setIsAiThinking] = useState(false);
+
+  async function askAiChat(text: string, overrideEntity?: string) {
+    setIsAiThinking(true);
+    try {
+      const response = await postJson<ChatApiResponse>("/api/chat", {
+        message: text,
+        locale,
+        entity_name: overrideEntity || selectedEntity,
+        has_source: hasSource,
+        source_summary: selectedSource ? `${selectedSource.label} · ${selectedSource.detail}` : null,
+        phase,
+        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+      });
+      return response.response;
+    } catch (error) {
+      return locale === "id"
+        ? "Maaf, terjadi kendala saat menghubungkan ke MCP server. Silakan coba lagi."
+        : "Sorry, an error occurred while connecting to the MCP server. Please try again.";
+    } finally {
+      setIsAiThinking(false);
+    }
+  }
+
   async function sendMessage() {
     const text = chatDraft.trim();
     const currentAttachment = pendingAttachment;
 
     if (!text && !currentAttachment) return;
 
+    // LANGSUNG KOSONGKAN INPUT BAR & LAMPIRAN DRAFT
     updateChatDraft("");
     setPendingAttachment(null);
 
-    // Tampilkan pesan user (termasuk label file jika ada)
-    const userDisplayContent = currentAttachment
-      ? (text ? `[Lampiran File: ${currentAttachment.file.name}]\n${text}` : `[Lampiran File: ${currentAttachment.file.name}]`)
-      : text;
-    pushMessage("user", userDisplayContent);
+    // Tampilkan pesan user secara natural & pasang thumbnail attachment jika ada
+    const userDisplayContent = text || (locale === "id" ? "Mohon analisis dokumen ini." : "Please analyze this document.");
+    const attachmentData = currentAttachment
+      ? {
+          filename: currentAttachment.file.name,
+          previewUrl: currentAttachment.previewUrl,
+          sizeBytes: currentAttachment.file.size,
+        }
+      : undefined;
+
+    pushMessage("user", userDisplayContent, undefined, undefined, attachmentData);
 
     // Cek jika user menginput nama client baru diawali "client :" atau "client:"
     if (text) {
@@ -373,15 +409,15 @@ export default function WorkspacePage() {
       }
     }
 
-    // Aturan entitas berlaku ketat untuk SEMUA percakapan & pengunggahan dokumen
+    // Aturan entitas berlaku ketat & bersih tanpa prompt kaku
     if (!selectedEntity) {
       setPendingUserIntent(userDisplayContent);
       if (currentAttachment) {
-        setPendingAttachment(currentAttachment); // Simpan kembali attachment draft hingga entitas dipilih
+        setPendingAttachment(currentAttachment); // Simpan kembali attachment draft jika entitas belum dipilih
       }
       const promptMsg = locale === "id"
-        ? `Silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan \`client : Nama Klien\` agar saya dapat memproses instruksi/dokumen ini: “${userDisplayContent}”.`
-        : `Please select an active client/entity from the dropdown above, or type a new client name prefixed with \`client : Client Name\` so I can process this request/document: “${userDisplayContent}”.`;
+        ? `Silakan pilih nama klien/entitas pada dropdown di atas atau ketik \`client : Nama Klien\` untuk melanjutkan.`
+        : `Please select an active client/entity from the dropdown above or type \`client : Client Name\` to continue.`;
       pushMessage("assistant", promptMsg, undefined, "select_entity");
       return;
     }
@@ -389,11 +425,6 @@ export default function WorkspacePage() {
     // Jika ada lampiran pending, proses dokumen upload terlebih dahulu saat di-enter bersama intent
     if (currentAttachment) {
       await uploadAndProcessPendingAttachment(currentAttachment.file, text);
-      if (text) {
-        setPhase("source_review");
-        const aiReply = await askAiChat(text);
-        pushMessage("assistant", aiReply);
-      }
       return;
     }
 
@@ -449,6 +480,7 @@ export default function WorkspacePage() {
       status: "attached",
     };
 
+    setIsAiThinking(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -461,20 +493,27 @@ export default function WorkspacePage() {
       localSource.detail = `${localSource.document?.document_type || "unknown"} · ${formatBytes(file.size)}`;
       localSource.status = "processing";
       addSource(localSource);
-      pushMessage("assistant", t.uploadReading, localSource.id);
+
       const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${localSource.document?.id}/quick-check`, {});
       localSource.detail = `${quickCheck.document_type} · ${quickCheck.provider}`;
       localSource.status = "quick_checked";
       localSource.ocrDraftMarkdown = quickCheck.document_type === "image_evidence" ? quickCheck.markdown : undefined;
       setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
-      pushMessage("assistant", quickCheck.markdown, localSource.id, "confirm_process");
+
+      // Kirim hasil ekstrak file ke AI MCP untuk dianalisis dan dijawab secara organis tanpa memberikan pilihan teknis kaku
+      setPhase("source_review");
+      const promptToAi = `Saya baru saja mengunggah dokumen/struk "${file.name}" (Jenis: ${quickCheck.document_type}). Berikut hasil pembacaan data awal:\n\n${quickCheck.markdown}\n\nInstruksi Tambahan Pengguna: ${userText || "Mohon lakukan analisis akuntansi PSAK sesuai data di atas secara proaktif."}`;
+      const aiReply = await askAiChat(promptToAi);
+      pushMessage("assistant", aiReply, localSource.id);
+
       return localSource;
     } catch (error) {
       setApiError(error instanceof Error ? error.message : t.uploadFailed);
       localSource.status = "failed";
       addSource(localSource);
-      respondWithSourcePlan(localSource, userText);
       return null;
+    } finally {
+      setIsAiThinking(false);
     }
   }
 
@@ -566,8 +605,8 @@ export default function WorkspacePage() {
     setPhase("source_review");
   }
 
-  function pushMessage(role: MessageRole, content: string, sourceId?: string, actions?: ChatMessage["actions"]) {
-    setMessages((items) => [...items, { id: crypto.randomUUID(), role, content, sourceId, actions }]);
+  function pushMessage(role: MessageRole, content: string, sourceId?: string, actions?: ChatMessage["actions"], attachment?: ChatMessage["attachment"]) {
+    setMessages((items) => [...items, { id: crypto.randomUUID(), role, content, sourceId, actions, attachment }]);
   }
 
   function respondWithSourcePlan(source: WorkspaceSource, context?: string) {
@@ -575,23 +614,7 @@ export default function WorkspacePage() {
     pushMessage("assistant", message, source.id, "confirm_process");
   }
 
-  async function askAiChat(text: string, overrideEntity?: string) {
-    try {
-      const response = await postJson<ChatApiResponse>("/api/chat", {
-        message: text,
-        locale,
-        entity_name: overrideEntity || selectedEntity,
-        has_source: hasSource,
-        source_summary: selectedSource ? `${selectedSource.label} · ${selectedSource.detail}` : null,
-        phase,
-        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-      });
-      return response.response;
-    } catch (error) {
-      setApiError(error instanceof Error ? error.message : "AI chat failed");
-      return buildDiscussionReply(text, locale, hasSource);
-    }
-  }
+
 
   return (
     <main className="h-screen overflow-hidden bg-canvas text-ink">
@@ -692,6 +715,21 @@ export default function WorkspacePage() {
                       }}
                     />
                   ))}
+                  {isAiThinking && (
+                    <div className="flex items-start gap-3 text-left">
+                      <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-gold/15 text-gold border border-gold/30">
+                        <Sparkles size={16} className="animate-spin" />
+                      </div>
+                      <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-sm">
+                        <div className="flex items-center gap-1.5 py-1">
+                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "300ms" }} />
+                          <span className="ml-2 text-xs text-muted-foreground/80 font-medium">{locale === "id" ? "Senior Akuntan AI sedang menganalisis…" : "Senior Accountant AI is analyzing…"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {apiError && <div className="rounded-xl border border-[#5B482E] bg-[#2C2418] p-4 text-xs text-[#EDCE91]">{apiError}</div>}
                   {resume && (
                     <ResumeCard
@@ -999,8 +1037,25 @@ function ChatBubble(props: {
   return (
     <div className={`group flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`${isUser ? "max-w-[85%]" : "w-full max-w-none"} ${isWorking ? "relative overflow-hidden rounded-2xl p-[1px] before:absolute before:inset-[-70%] before:animate-spin before:bg-[conic-gradient(from_90deg,rgba(12,143,124,.05),rgba(12,143,124,.85),rgba(217,168,91,.85),rgba(80,112,255,.55),rgba(12,143,124,.05))] before:content-['']" : ""}`}>
-        <div className={`relative rounded-2xl px-4 py-3.5 text-sm leading-6 ${isUser ? "bg-gold text-white" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
+        <div className={`relative rounded-2xl px-4 py-3.5 text-sm leading-6 ${isUser ? "bg-panel border border-gold/30 shadow-sm text-ink" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
           
+          {/* Render Thumbnail Lampiran Berkas di Dalam Bubble Chat (Gemini App style) */}
+          {message.attachment && (
+            <div className="mb-3 flex items-center gap-3 self-start rounded-xl border border-line bg-muted/50 p-2 pr-3">
+              {message.attachment.previewUrl ? (
+                <img src={message.attachment.previewUrl} alt="Attachment thumbnail" className="size-12 rounded-lg object-cover border border-line" />
+              ) : (
+                <div className="grid size-12 place-items-center rounded-lg bg-canvas border border-line text-ink font-bold text-xs uppercase">
+                  {message.attachment.filename.split('.').pop() || 'FILE'}
+                </div>
+              )}
+              <div className="flex flex-col max-w-[200px] sm:max-w-xs">
+                <span className="truncate text-xs font-semibold text-ink">{message.attachment.filename}</span>
+                <span className="text-[10px] text-muted-foreground">{(message.attachment.sizeBytes / 1024).toFixed(1)} KB</span>
+              </div>
+            </div>
+          )}
+
           {/* Teks Pesan Chat */}
           <MarkdownContent text={displayContent} />
 

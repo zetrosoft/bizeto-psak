@@ -114,10 +114,11 @@ class UrlInputRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     locale: Literal["en", "id"] = "id"
+    entity_name: str | None = None
     has_source: bool = False
     source_summary: str | None = None
     phase: str = "discussion"
-    history: list[dict[str, str]] = Field(default_factory=list)
+    history: list[dict[str, str]] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):

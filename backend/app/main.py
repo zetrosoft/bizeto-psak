@@ -86,6 +86,7 @@ def update_session(payload: dict[str, Any]) -> dict[str, Any]:
 def chat(request: ChatRequest) -> dict:
     system_prompt = build_bizeto_chat_system_prompt(
         locale=request.locale,
+        entity_name=request.entity_name,
         has_source=request.has_source,
         phase=request.phase,
         source_summary=request.source_summary,

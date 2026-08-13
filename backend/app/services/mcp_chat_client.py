@@ -35,8 +35,9 @@ def call_mcp_chat(prompt: str, system_prompt: str, agent_role: str = "accounting
         }
 
 
-def build_bizeto_chat_system_prompt(locale: str, has_source: bool, phase: str, source_summary: str | None = None) -> str:
+def build_bizeto_chat_system_prompt(locale: str, entity_name: str | None = None, has_source: bool = False, phase: str = "discussion", source_summary: str | None = None) -> str:
     language = "Bahasa Indonesia" if locale == "id" else "English"
+    entity_ctx = f"Entitas/Klien aktif saat ini: {entity_name}." if entity_name else "Belum ada entitas/klien aktif terpilih."
     source_rule = (
         "Jika ada attachment/URL, jangan memproses data kecuali user eksplisit meminta proses atau klik konfirmasi. "
         "Untuk attachment/URL, bantu jelaskan quick check, risiko, dan rencana proses."
@@ -44,9 +45,11 @@ def build_bizeto_chat_system_prompt(locale: str, has_source: bool, phase: str, s
         else "Jika tidak ada attachment/URL, jawab sebagai diskusi akuntansi biasa. Jangan mengaku memproses data."
     )
     return "\n".join([
-        "Anda adalah Senior Akuntan AI di aplikasi Bizeto PSAK.",
-        f"Gunakan {language}.",
-        "Gaya jawaban modern, jelas, profesional, ringkas, dan mudah dipahami.",
+        "Anda adalah Senior Akuntan AI di aplikasi Bizeto PSAK yang terhubung langsung dengan MCP Server backend.",
+        f"Selalu jawab menggunakan {language} (atau sesuaikan persis dengan bahasa yang digunakan pengguna saat bertanya).",
+        f"Konteks Entitas: {entity_ctx}",
+        "DILARANG Memberikan template statis/kaku bot. Jawablah secara organis, alami, dan responsif langsung sesuai dengan maksud/intent asli pengguna.",
+        "DILARANG menutup diskusi. Selalu hubungkan jawaban dengan konteks akuntansi PSAK dan buka diskusi lanjutan yang alami.",
         "Ikuti PSAK sebagai guardrail konseptual, tetapi jangan memberikan final posting jurnal tanpa review manusia.",
         source_rule,
         f"Phase workspace saat ini: {phase}.",

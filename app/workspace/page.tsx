@@ -272,15 +272,25 @@ export default function WorkspacePage() {
     }
   }
 
-  function handleSelectEntity(entityName: string) {
+  const [pendingUserIntent, setPendingUserIntent] = useState<string | null>(null);
+
+  async function handleSelectEntity(entityName: string) {
     setSelectedEntity(entityName);
     void persistUserSession(entityName);
-    pushMessage(
-      "assistant",
-      locale === "id"
-        ? `Entitas aktif untuk akun **${username}** berhasil dikaitkan ke **${entityName}** (Tersimpan permanen di database VPS untuk transaksi). Anda tetap bebas memilih entitas lain sewaktu-waktu untuk sekadar preview.`
-        : `Active entity for **${username}** successfully linked to **${entityName}** (Permanently stored in VPS database for transactions). You can still select other entities anytime for previewing.`
-    );
+    
+    // Jika ada intent pertanyaan pengguna sebelum memilih entitas:
+    if (pendingUserIntent) {
+      const intentToProcess = pendingUserIntent;
+      setPendingUserIntent(null);
+      setPhase(hasSource ? "source_review" : "discussion");
+      const aiReply = await askAiChat(intentToProcess, entityName);
+      pushMessage("assistant", aiReply);
+    } else {
+      // Minta AI MCP menyusun respon organis sesuai konteks entitas baru tanpa kalimat bot kaku
+      setPhase("discussion");
+      const aiReply = await askAiChat(`Saya baru saja memilih/mengganti entitas aktif ke ${entityName}. Mari kita lanjutkan diskusi.`, entityName);
+      pushMessage("assistant", aiReply);
+    }
   }
 
   async function handleAddEntityWithName(name: string) {
@@ -288,9 +298,9 @@ export default function WorkspacePage() {
     try {
       const res = await postJson<{ entity: { name: string } }>("/api/entities", { name, username });
       if (res.entity?.name) {
+        await fetchSessionAndEntities();
         handleSelectEntity(res.entity.name);
         setNewEntityInput("");
-        await fetchSessionAndEntities();
       }
     } catch {
       handleSelectEntity(name);
@@ -341,9 +351,10 @@ export default function WorkspacePage() {
     }
 
     if (!selectedEntity) {
+      setPendingUserIntent(text);
       const promptMsg = locale === "id"
-        ? "Sebelum kita memproses atau berdiskusi lebih jauh, silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan `client : Nama Klien` di inputan chat."
-        : "Before we process or discuss further, please select an active client/entity from the dropdown above, or type a new client name prefixed with `client : Client Name` in the chat input.";
+        ? `Silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan \`client : Nama Klien\` agar saya dapat langsung menjawab pertanyaan Anda: “${text}”.`
+        : `Please select an active client/entity from the dropdown above, or type a new client name prefixed with \`client : Client Name\` so I can directly address your query: “${text}”.`;
       pushMessage("assistant", promptMsg, undefined, "select_entity");
       return;
     }
@@ -512,11 +523,12 @@ export default function WorkspacePage() {
     pushMessage("assistant", message, source.id, "confirm_process");
   }
 
-  async function askAiChat(text: string) {
+  async function askAiChat(text: string, overrideEntity?: string) {
     try {
       const response = await postJson<ChatApiResponse>("/api/chat", {
         message: text,
         locale,
+        entity_name: overrideEntity || selectedEntity,
         has_source: hasSource,
         source_summary: selectedSource ? `${selectedSource.label} · ${selectedSource.detail}` : null,
         phase,

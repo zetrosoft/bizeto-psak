@@ -483,7 +483,7 @@ export default function WorkspacePage() {
     setPhase("source_review");
   }
 
-  function pushMessage(role: MessageRole, content: string, sourceId?: string, actions?: "confirm_process") {
+  function pushMessage(role: MessageRole, content: string, sourceId?: string, actions?: ChatMessage["actions"]) {
     setMessages((items) => [...items, { id: crypto.randomUUID(), role, content, sourceId, actions }]);
   }
 

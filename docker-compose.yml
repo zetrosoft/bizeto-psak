@@ -41,6 +41,8 @@ services:
       - DATABASE_URL=postgresql://jkk_user:jkk_super_secret_password@jkk-db:5432/bizeto_psak_db
       - MCP_SERVER_URL=https://mcp.samkarsa.com
       - MCP_ENABLED=true
+    volumes:
+      - bizeto-uploads:/app/backend/.data/uploads
     networks:
       - erpnext-docker_traefik-ingress
       - jkk-apps-backend
@@ -58,6 +60,9 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+
+volumes:
+  bizeto-uploads:
 
 networks:
   erpnext-docker_traefik-ingress:

@@ -110,12 +110,12 @@ const copy = {
     workspace: "Workspace",
     entity: "No entity selected",
     period: "Open period",
-    title: "What accounting evidence should we discuss?",
-    subtitle: "Chat freely, attach a file, or paste a URL. Bizeto PSAK will not process attached data until you confirm.",
-    placeholder: "Discuss, paste a URL, or add context for the attached evidence…",
+    title: "How can I assist your accounting today?",
+    subtitle: "Enterprise PSAK Copilot for real-time ledger analysis and audit-ready bookkeeping.",
+    placeholder: "Ask an accounting question, attach evidence, or type 'client: Name'…",
     aiName: "Senior Accountant AI",
-    empty: "Start with a question, a file, or a URL.",
-    emptyHint: "Without evidence, this room behaves as a discussion space. With evidence, I will only inspect and propose a plan first.",
+    empty: "Start with a query, document, or URL.",
+    emptyHint: "Ask questions, upload financial evidence, or paste a link to get started.",
     sources: "Sources",
     noSources: "No sources yet",
     processLog: "Process log",
@@ -155,14 +155,14 @@ const copy = {
   },
   id: {
     workspace: "Workspace",
-    entity: "Belum pilih entitas",
-    period: "Periode terbuka",
-    title: "Bukti akuntansi apa yang mau kita bahas?",
-    subtitle: "Silakan diskusi bebas, attach file, atau tempel URL. Bizeto PSAK tidak akan memproses data attached sebelum Anda konfirmasi.",
-    placeholder: "Diskusi, tempel URL, atau beri konteks untuk bukti yang dilampirkan…",
+    entity: "Pilih Entitas",
+    period: "Periode Terbuka",
+    title: "Ada yang bisa saya bantu terkait akuntansi hari ini?",
+    subtitle: "Copilot PSAK Enterprise untuk analisis jurnal dan pembukuan siap audit.",
+    placeholder: "Tanyakan analisis PSAK, lampirkan bukti keuangan, atau ketik 'client : Nama Klien'…",
     aiName: "Senior Akuntan AI",
-    empty: "Mulai dengan pertanyaan, file, atau URL.",
-    emptyHint: "Tanpa bukti, ruang ini menjadi ruang diskusi. Dengan bukti, saya hanya inspeksi cepat dan mengusulkan rencana dulu.",
+    empty: "Mulai pertanyaan, lampiran dokumen, atau URL.",
+    emptyHint: "Tanyakan seputar akuntansi atau lampirkan berkas keuangan untuk memulai.",
     sources: "Sumber",
     noSources: "Belum ada sumber",
     processLog: "Log proses",
@@ -233,6 +233,9 @@ export default function WorkspacePage() {
   const [newEntityInput, setNewEntityInput] = useState("");
 
   useEffect(() => {
+    // Instant restore dari LocalStorage untuk UX instan tanpa flicker saat refresh
+    const cachedEntity = localStorage.getItem("bizeto_active_entity");
+    if (cachedEntity) setSelectedEntity(cachedEntity);
     fetchSessionAndEntities();
   }, []);
 
@@ -248,7 +251,10 @@ export default function WorkspacePage() {
       }
       if (sessionRes.ok) {
         const sess = await sessionRes.json();
-        if (sess.active_entity_name) setSelectedEntity(sess.active_entity_name);
+        if (sess.active_entity_name) {
+          setSelectedEntity(sess.active_entity_name);
+          localStorage.setItem("bizeto_active_entity", sess.active_entity_name);
+        }
         if (sess.locale) setLocaleState(sess.locale);
         if (sess.theme) setThemeState(sess.theme);
       }
@@ -258,6 +264,9 @@ export default function WorkspacePage() {
   }
 
   async function persistUserSession(entityName: string | null, newLocale?: Locale, newTheme?: Theme) {
+    if (entityName) {
+      localStorage.setItem("bizeto_active_entity", entityName);
+    }
     try {
       const entityObj = entities.find((e) => e.name === entityName);
       await postJson("/api/user-session", {

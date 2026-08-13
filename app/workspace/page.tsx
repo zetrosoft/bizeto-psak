@@ -213,6 +213,10 @@ export default function WorkspacePage() {
   const [sources, setSources] = useState<WorkspaceSource[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [resume, setResume] = useState<BackendResume | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    previewUrl?: string;
+  } | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
   const [apiError, setApiError] = useState("");
@@ -343,28 +347,53 @@ export default function WorkspacePage() {
 
   async function sendMessage() {
     const text = chatDraft.trim();
-    if (!text) return;
+    const currentAttachment = pendingAttachment;
+
+    if (!text && !currentAttachment) return;
 
     updateChatDraft("");
-    pushMessage("user", text);
+    setPendingAttachment(null);
+
+    // Tampilkan pesan user (termasuk label file jika ada)
+    const userDisplayContent = currentAttachment
+      ? (text ? `[Lampiran File: ${currentAttachment.file.name}]\n${text}` : `[Lampiran File: ${currentAttachment.file.name}]`)
+      : text;
+    pushMessage("user", userDisplayContent);
 
     // Cek jika user menginput nama client baru diawali "client :" atau "client:"
-    const clientMatch = text.match(/^(?:client|klien|entitas)\s*:\s*(.+)$/i);
-    if (clientMatch) {
-      const newClientName = clientMatch[1].trim();
-      if (newClientName) {
-        setNewEntityInput(newClientName);
-        await handleAddEntityWithName(newClientName);
-        return;
+    if (text) {
+      const clientMatch = text.match(/^(?:client|klien|entitas)\s*:\s*(.+)$/i);
+      if (clientMatch) {
+        const newClientName = clientMatch[1].trim();
+        if (newClientName) {
+          setNewEntityInput(newClientName);
+          await handleAddEntityWithName(newClientName);
+          return;
+        }
       }
     }
 
+    // Aturan entitas berlaku ketat untuk SEMUA percakapan & pengunggahan dokumen
     if (!selectedEntity) {
-      setPendingUserIntent(text);
+      setPendingUserIntent(userDisplayContent);
+      if (currentAttachment) {
+        setPendingAttachment(currentAttachment); // Simpan kembali attachment draft hingga entitas dipilih
+      }
       const promptMsg = locale === "id"
-        ? `Silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan \`client : Nama Klien\` agar saya dapat langsung menjawab pertanyaan Anda: “${text}”.`
-        : `Please select an active client/entity from the dropdown above, or type a new client name prefixed with \`client : Client Name\` so I can directly address your query: “${text}”.`;
+        ? `Silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan \`client : Nama Klien\` agar saya dapat memproses instruksi/dokumen ini: “${userDisplayContent}”.`
+        : `Please select an active client/entity from the dropdown above, or type a new client name prefixed with \`client : Client Name\` so I can process this request/document: “${userDisplayContent}”.`;
       pushMessage("assistant", promptMsg, undefined, "select_entity");
+      return;
+    }
+
+    // Jika ada lampiran pending, proses dokumen upload terlebih dahulu saat di-enter bersama intent
+    if (currentAttachment) {
+      await uploadAndProcessPendingAttachment(currentAttachment.file, text);
+      if (text) {
+        setPhase("source_review");
+        const aiReply = await askAiChat(text);
+        pushMessage("assistant", aiReply);
+      }
       return;
     }
 
@@ -394,7 +423,21 @@ export default function WorkspacePage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Tutup dropdown menu (+) setelah file dipilih
+    setAttachOpen(false);
     setApiError("");
+
+    const isImage = file.type.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+    
+    // Simpan sebagai draft lampiran (Gemini App style thumbnail)
+    setPendingAttachment({ file, previewUrl });
+    
+    // Reset file input value agar file yang sama bisa dipilih kembali jika perlu
+    event.target.value = "";
+  }
+
+  async function uploadAndProcessPendingAttachment(file: File, userText: string): Promise<WorkspaceSource | null> {
     const isImage = file.type.startsWith("image/");
     const localSource: WorkspaceSource = {
       id: crypto.randomUUID(),
@@ -425,14 +468,14 @@ export default function WorkspacePage() {
       localSource.ocrDraftMarkdown = quickCheck.document_type === "image_evidence" ? quickCheck.markdown : undefined;
       setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
       pushMessage("assistant", quickCheck.markdown, localSource.id, "confirm_process");
-      return;
+      return localSource;
     } catch (error) {
       setApiError(error instanceof Error ? error.message : t.uploadFailed);
       localSource.status = "failed";
+      addSource(localSource);
+      respondWithSourcePlan(localSource, userText);
+      return null;
     }
-
-    addSource(localSource);
-    respondWithSourcePlan(localSource);
   }
 
   async function processSource(source: WorkspaceSource) {
@@ -605,6 +648,8 @@ export default function WorkspacePage() {
                   locale={locale}
                   attachOpen={attachOpen}
                   setAttachOpen={setAttachOpen}
+                  pendingAttachment={pendingAttachment}
+                  onRemoveAttachment={() => setPendingAttachment(null)}
                   chatDraft={chatDraft}
                   updateChatDraft={updateChatDraft}
                   chatRef={chatRef}
@@ -668,6 +713,8 @@ export default function WorkspacePage() {
               locale={locale}
               attachOpen={attachOpen}
               setAttachOpen={setAttachOpen}
+              pendingAttachment={pendingAttachment}
+              onRemoveAttachment={() => setPendingAttachment(null)}
               chatDraft={chatDraft}
               updateChatDraft={updateChatDraft}
               chatRef={chatRef}
@@ -698,13 +745,15 @@ function StartRoom(props: {
   locale: Locale;
   attachOpen: boolean;
   setAttachOpen: (open: boolean) => void;
+  pendingAttachment: { file: File; previewUrl?: string } | null;
+  onRemoveAttachment: () => void;
   chatDraft: string;
   updateChatDraft: (value: string) => void;
   chatRef: RefObject<HTMLTextAreaElement | null>;
   onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
   onSend: () => void | Promise<void>;
 }) {
-  const { t, locale, attachOpen, setAttachOpen, chatDraft, updateChatDraft, chatRef, onSend } = props;
+  const { t, locale, attachOpen, setAttachOpen, pendingAttachment, onRemoveAttachment, chatDraft, updateChatDraft, chatRef, onSend } = props;
   return (
     <div className="flex min-h-[calc(100vh-170px)] flex-col items-center justify-center text-center">
       <div className="mb-7">
@@ -717,6 +766,31 @@ function StartRoom(props: {
           {attachOpen && (
             <AttachMenu t={t} onFile={props.onFile} className="absolute bottom-16 left-4 z-10" />
           )}
+
+          {/* Gemini App Style Pending Attachment Thumbnail */}
+          {pendingAttachment && (
+            <div className="mb-3 flex items-center gap-3 self-start rounded-xl border border-line bg-muted/60 p-2 pr-3">
+              {pendingAttachment.previewUrl ? (
+                <img src={pendingAttachment.previewUrl} alt="Thumbnail preview" className="size-12 rounded-lg object-cover" />
+              ) : (
+                <div className="grid size-12 place-items-center rounded-lg bg-panel border border-line text-ink font-bold text-xs uppercase">
+                  {pendingAttachment.file.name.split('.').pop() || 'FILE'}
+                </div>
+              )}
+              <div className="flex flex-col max-w-[200px] sm:max-w-xs">
+                <span className="truncate text-xs font-semibold text-ink">{pendingAttachment.file.name}</span>
+                <span className="text-[10px] text-muted-foreground">{(pendingAttachment.file.size / 1024).toFixed(1)} KB · Siap dikirim</span>
+              </div>
+              <button
+                onClick={onRemoveAttachment}
+                className="ml-auto grid size-6 place-items-center rounded-full bg-canvas/80 text-muted-foreground transition hover:bg-red-500 hover:text-white"
+                title="Hapus lampiran"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
           <textarea
             ref={chatRef}
             value={chatDraft}
@@ -739,10 +813,6 @@ function StartRoom(props: {
               <button className="grid size-9 place-items-center rounded-full border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Voice input">
                 <Mic2 size={16} />
               </button>
-              <label className="grid size-9 cursor-pointer place-items-center rounded-full border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Upload file">
-                <Upload size={16} />
-                <input type="file" className="sr-only" accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,audio/*" onChange={props.onFile} />
-              </label>
             </div>
             <button onClick={() => void onSend()} className="grid size-10 place-items-center rounded-lg bg-gold text-white" aria-label="Send">
               <ArrowUp size={16} />
@@ -1187,6 +1257,8 @@ function Composer(props: {
   locale: Locale;
   attachOpen: boolean;
   setAttachOpen: (open: boolean) => void;
+  pendingAttachment: { file: File; previewUrl?: string } | null;
+  onRemoveAttachment: () => void;
   chatDraft: string;
   updateChatDraft: (value: string) => void;
   chatRef: RefObject<HTMLTextAreaElement | null>;
@@ -1194,7 +1266,7 @@ function Composer(props: {
   onSend: () => void | Promise<void>;
   onReset: () => void;
 }) {
-  const { t, locale, attachOpen, setAttachOpen, chatDraft, updateChatDraft, chatRef, onSend, onReset } = props;
+  const { t, locale, attachOpen, setAttachOpen, pendingAttachment, onRemoveAttachment, chatDraft, updateChatDraft, chatRef, onSend, onReset } = props;
   return (
     <div className="border-t border-line bg-canvas/95 px-5 py-4 backdrop-blur md:px-8 lg:px-10">
       <div className="relative mx-auto w-full max-w-6xl rounded-xl border border-line bg-panel px-3 py-3 shadow-panel">
@@ -1211,6 +1283,31 @@ function Composer(props: {
             </div>
           </div>
         )}
+
+        {/* Gemini App Style Pending Attachment Thumbnail */}
+        {pendingAttachment && (
+          <div className="mb-2 flex items-center gap-3 self-start rounded-lg border border-line bg-muted/60 p-2 pr-3">
+            {pendingAttachment.previewUrl ? (
+              <img src={pendingAttachment.previewUrl} alt="Thumbnail preview" className="size-10 rounded-md object-cover" />
+            ) : (
+              <div className="grid size-10 place-items-center rounded-md bg-panel border border-line text-ink font-bold text-[10px] uppercase">
+                {pendingAttachment.file.name.split('.').pop() || 'FILE'}
+              </div>
+            )}
+            <div className="flex flex-col max-w-[200px] sm:max-w-xs truncate">
+              <span className="truncate text-xs font-semibold text-ink">{pendingAttachment.file.name}</span>
+              <span className="text-[10px] text-muted-foreground">{(pendingAttachment.file.size / 1024).toFixed(1)} KB · Siap dikirim</span>
+            </div>
+            <button
+              onClick={onRemoveAttachment}
+              className="ml-auto grid size-5 place-items-center rounded-full bg-canvas/80 text-muted-foreground transition hover:bg-red-500 hover:text-white"
+              title="Hapus lampiran"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
           <button onClick={() => setAttachOpen(!attachOpen)} className={`mb-0.5 grid size-9 shrink-0 place-items-center rounded-lg border border-line ${attachOpen ? "bg-gold text-white" : "bg-muted text-muted-foreground hover:text-ink"}`} aria-label="Attach input source">
             <Plus size={17} />

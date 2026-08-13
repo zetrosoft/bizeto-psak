@@ -7,8 +7,10 @@ import {
   BadgeCheck,
   BookOpen,
   Check,
+  ChevronDown,
   CircleAlert,
   ClipboardList,
+  Copy,
   FileSpreadsheet,
   Gauge,
   Grid2X2,
@@ -24,6 +26,8 @@ import {
   Settings,
   Sparkles,
   Sun,
+  ThumbsDown,
+  ThumbsUp,
   Upload,
   X,
   ZoomIn,
@@ -91,6 +95,8 @@ type ChatMessage = {
   content: string;
   sourceId?: string;
   actions?: "confirm_process" | "select_entity";
+  feedback?: "up" | "down";
+  copied?: boolean;
 };
 
 type ChatApiResponse = {
@@ -277,8 +283,7 @@ export default function WorkspacePage() {
     );
   }
 
-  async function handleAddEntity() {
-    const name = newEntityInput.trim();
+  async function handleAddEntityWithName(name: string) {
     if (!name) return;
     try {
       const res = await postJson<{ entity: { name: string } }>("/api/entities", { name, username });
@@ -291,6 +296,10 @@ export default function WorkspacePage() {
       handleSelectEntity(name);
       setNewEntityInput("");
     }
+  }
+
+  async function handleAddEntity() {
+    await handleAddEntityWithName(newEntityInput.trim());
   }
 
   useEffect(() => {
@@ -320,10 +329,21 @@ export default function WorkspacePage() {
     updateChatDraft("");
     pushMessage("user", text);
 
+    // Cek jika user menginput nama client baru diawali "client :" atau "client:"
+    const clientMatch = text.match(/^(?:client|klien|entitas)\s*:\s*(.+)$/i);
+    if (clientMatch) {
+      const newClientName = clientMatch[1].trim();
+      if (newClientName) {
+        setNewEntityInput(newClientName);
+        await handleAddEntityWithName(newClientName);
+        return;
+      }
+    }
+
     if (!selectedEntity) {
       const promptMsg = locale === "id"
-        ? "Sebelum kita memproses atau berdiskusi lebih jauh, silakan pilih nama klien/entitas yang sedang diampu, atau ketik nama entitas baru di bawah ini:"
-        : "Before we process or discuss further, please select an active client/entity, or enter a new entity name below:";
+        ? "Sebelum kita memproses atau berdiskusi lebih jauh, silakan pilih nama klien/entitas yang sedang diampu pada dropdown di atas, atau ketik nama klien baru dengan awalan `client : Nama Klien` di inputan chat."
+        : "Before we process or discuss further, please select an active client/entity from the dropdown above, or type a new client name prefixed with `client : Client Name` in the chat input.";
       pushMessage("assistant", promptMsg, undefined, "select_entity");
       return;
     }
@@ -577,13 +597,27 @@ export default function WorkspacePage() {
                       key={message.id}
                       message={message}
                       t={t}
+                      locale={locale}
                       source={message.sourceId ? sources.find((item) => item.id === message.sourceId) : undefined}
                       entities={entities}
                       selectedEntity={selectedEntity}
-                      newEntityInput={newEntityInput}
-                      setNewEntityInput={setNewEntityInput}
                       onSelectEntity={handleSelectEntity}
-                      onAddEntity={() => void handleAddEntity()}
+                      onCopy={() => {
+                        void navigator.clipboard.writeText(message.content);
+                        setMessages((items) =>
+                          items.map((m) => (m.id === message.id ? { ...m, copied: true } : m))
+                        );
+                        setTimeout(() => {
+                          setMessages((items) =>
+                            items.map((m) => (m.id === message.id ? { ...m, copied: false } : m))
+                          );
+                        }, 2000);
+                      }}
+                      onFeedback={(vote) => {
+                        setMessages((items) =>
+                          items.map((m) => (m.id === message.id ? { ...m, feedback: m.feedback === vote ? undefined : vote } : m))
+                        );
+                      }}
                       onUpdateOcrDraft={updateOcrDraft}
                       onRerunOcr={(source) => void rerunOcr(source)}
                       onConfirm={() => {
@@ -841,36 +875,74 @@ function WorkspaceSidebar(props: {
 function ChatBubble(props: {
   message: ChatMessage;
   t: WorkspaceCopy;
+  locale: Locale;
   source?: WorkspaceSource;
   entities: Array<{ id: string; name: string }>;
   selectedEntity: string | null;
-  newEntityInput: string;
-  setNewEntityInput: (val: string) => void;
   onSelectEntity: (name: string) => void;
-  onAddEntity: () => void;
+  onCopy: () => void;
+  onFeedback: (vote: "up" | "down") => void;
   onUpdateOcrDraft: (sourceId: string, value: string) => void;
   onRerunOcr: (source: WorkspaceSource) => void;
   onConfirm: () => void;
 }) {
-  const { message, t, source, entities, selectedEntity, newEntityInput, setNewEntityInput, onSelectEntity, onAddEntity, onConfirm, onRerunOcr, onUpdateOcrDraft } = props;
+  const {
+    message,
+    t,
+    locale,
+    source,
+    entities,
+    selectedEntity,
+    onSelectEntity,
+    onCopy,
+    onFeedback,
+    onConfirm,
+    onRerunOcr,
+    onUpdateOcrDraft,
+  } = props;
   const isUser = message.role === "user";
   const isImageOcrReview = message.actions === "confirm_process" && source?.document?.document_type === "image_evidence";
-  const showSourceCard = Boolean(source) && !isImageOcrReview;
   const isWorking = !isUser && source?.status === "processing" && !message.actions;
   const displayContent = isImageOcrReview && source?.ocrDraftMarkdown ? source.ocrDraftMarkdown : message.content;
+
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`${isUser ? "max-w-[82%]" : "w-full max-w-none"} ${isWorking ? "relative overflow-hidden rounded-[18px] p-[1px] before:absolute before:inset-[-70%] before:animate-spin before:bg-[conic-gradient(from_90deg,rgba(12,143,124,.05),rgba(12,143,124,.85),rgba(217,168,91,.85),rgba(80,112,255,.55),rgba(12,143,124,.05))] before:content-['']" : ""}`}>
-        <div className={`relative rounded-2xl px-4 py-3 text-sm leading-6 ${isUser ? "bg-gold text-white" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
+    <div className={`group flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div className={`${isUser ? "max-w-[85%]" : "w-full max-w-none"} ${isWorking ? "relative overflow-hidden rounded-2xl p-[1px] before:absolute before:inset-[-70%] before:animate-spin before:bg-[conic-gradient(from_90deg,rgba(12,143,124,.05),rgba(12,143,124,.85),rgba(217,168,91,.85),rgba(80,112,255,.55),rgba(12,143,124,.05))] before:content-['']" : ""}`}>
+        <div className={`relative rounded-2xl px-4 py-3.5 text-sm leading-6 ${isUser ? "bg-gold text-white" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
+          
+          {/* Teks Pesan Chat */}
           <MarkdownContent text={displayContent} />
-          {showSourceCard && source && (
-            <div className="mt-3 rounded-xl border border-line bg-canvas/45 p-3 text-xs">
-              <p className="font-bold">{source.label}</p>
-              <p className="mt-1 text-muted-foreground">{source.detail}</p>
+
+          {/* Opsi Dropdown Klien / Entitas (Bersih tanpa nested card rumit) */}
+          {message.actions === "select_entity" && (
+            <div className="mt-3.5 border-t border-line/60 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-muted-foreground">Pilih Klien:</span>
+                <div className="relative inline-block">
+                  <select
+                    value={selectedEntity || ""}
+                    onChange={(e) => onSelectEntity(e.target.value)}
+                    className="cursor-pointer appearance-none rounded-lg border border-gold/40 bg-canvas px-3 py-1.5 pr-8 text-xs font-semibold text-gold outline-none hover:border-gold"
+                  >
+                    <option value="" disabled>-- Pilih Klien / Perusahaan --</option>
+                    {entities.map((item) => (
+                      <option key={item.id} value={item.name}>
+                        🏢 {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gold" />
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground/90">
+                💡 <em>Tips: Untuk menambah klien baru, ketik di chat dengan awalan <code className="rounded bg-muted px-1.5 py-0.5 text-ink font-mono">client : Nama Klien Baru</code></em>
+              </p>
             </div>
           )}
+
+          {/* OCR Review (Jika ada) */}
           {isImageOcrReview && source?.ocrDraftMarkdown && (
-            <div className="mt-4 border-t border-line pt-3">
+            <div className="mt-3.5 border-t border-line pt-3">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold">{t.ocrEditor}</p>
@@ -883,57 +955,63 @@ function ChatBubble(props: {
               <textarea
                 value={source.ocrDraftMarkdown}
                 onChange={(event) => onUpdateOcrDraft(source.id, event.target.value)}
-                rows={8}
-                className="max-h-72 min-h-36 w-full resize-y rounded-lg border border-line bg-canvas/45 p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
+                rows={7}
+                className="max-h-72 min-h-32 w-full resize-y rounded-lg border border-line bg-canvas/45 p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
               />
             </div>
           )}
-          {message.actions === "select_entity" && (
-            <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-3">
-              <p className="mb-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">Pilihan Klien / Entitas:</p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {entities.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onSelectEntity(item.name)}
-                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                      selectedEntity === item.name
-                        ? "border-gold bg-gold/20 text-gold"
-                        : "border-line bg-panel text-ink hover:border-gold/50"
-                    }`}
-                  >
-                    🏢 {item.name}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Ketik nama klien / perusahaan baru…"
-                  value={newEntityInput}
-                  onChange={(e) => setNewEntityInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void onAddEntity();
-                    }
-                  }}
-                  className="flex-1 rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs outline-none focus:border-gold"
-                />
+
+          {/* Tombol Aksi Konfirmasi */}
+          {message.actions === "confirm_process" && source?.document && (
+            <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3.5 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
+              {t.continueProcess}
+            </button>
+          )}
+
+          {/* Action Bar (Copy Text & Thumbs Up/Down Review Feedback) */}
+          {!isUser && (
+            <div className="mt-2.5 flex items-center justify-between border-t border-line/40 pt-2 text-xs text-muted-foreground/75">
+              <div className="flex items-center gap-1">
+                {/* Copy Button */}
                 <button
-                  onClick={onAddEntity}
-                  className="rounded-lg bg-gold px-3 py-1.5 text-xs font-bold text-white hover:brightness-105"
+                  onClick={onCopy}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 transition hover:bg-muted hover:text-ink"
+                  title="Salin teks respon"
                 >
-                  + Tambah
+                  <Copy size={13} />
+                  <span className="text-[11px]">{message.copied ? (locale === "id" ? "Tersalin!" : "Copied!") : (locale === "id" ? "Salin" : "Copy")}</span>
+                </button>
+              </div>
+
+              {/* Thumbs Up & Thumbs Down Review */}
+              <div className="flex items-center gap-1">
+                <span className="mr-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">Review:</span>
+                <button
+                  onClick={() => onFeedback("up")}
+                  className={`grid size-7 place-items-center rounded-md transition ${
+                    message.feedback === "up"
+                      ? "bg-teal/20 text-teal font-bold"
+                      : "hover:bg-muted hover:text-ink"
+                  }`}
+                  title="Sangat Baik / Sesuai"
+                >
+                  <ThumbsUp size={13} />
+                </button>
+                <button
+                  onClick={() => onFeedback("down")}
+                  className={`grid size-7 place-items-center rounded-md transition ${
+                    message.feedback === "down"
+                      ? "bg-red-500/20 text-red-500 font-bold"
+                      : "hover:bg-muted hover:text-ink"
+                  }`}
+                  title="Perlu Perbaikan / Kurang Tepat"
+                >
+                  <ThumbsDown size={13} />
                 </button>
               </div>
             </div>
           )}
-          {message.actions === "confirm_process" && source?.document && (
-            <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
-              {t.continueProcess}
-            </button>
-          )}
+
         </div>
       </div>
     </div>

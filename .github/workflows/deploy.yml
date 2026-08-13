@@ -1,6 +1,7 @@
 name: Deploy Bizeto PSAK V2 to VPS erpnext
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

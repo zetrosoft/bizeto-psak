@@ -1,0 +1,50 @@
+name: Deploy Bizeto PSAK V2 to VPS erpnext
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to erpnext VPS (psak.erpjkk.com)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            echo "🚀 Starting Deployment for psak.erpjkk.com..."
+            
+            DEPLOY_DIR="/root/bizeto-psak-deploy"
+            
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "Cloning repository..."
+              rm -rf "$DEPLOY_DIR"
+              git clone https://github.com/zetrosoft/bizeto-psak.git "$DEPLOY_DIR"
+            else
+              echo "Pulling latest code..."
+              cd "$DEPLOY_DIR"
+              git reset --hard
+              git pull origin main || git pull origin master
+            fi
+            
+            cd "$DEPLOY_DIR"
+            echo "Rebuilding and restarting bizeto-psak-v2 container..."
+            docker compose up -d --build --force-recreate
+            
+            echo "Verifying container status..."
+            sleep 5
+            docker ps | grep bizeto-psak-v2
+            
+            echo "✅ Deployment Successful!"

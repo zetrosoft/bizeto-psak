@@ -24,7 +24,8 @@ def call_mcp_ocr_receipt(file_bytes: bytes, mime_type: str) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=max(MCP_CHAT_TIMEOUT_SECONDS, 90)) as response:
+        # Timeout cepat (5s) agar quick-check dokumen instan & tidak pernah menggantung server
+        with urllib.request.urlopen(request, timeout=5) as response:
             content_type = response.headers.get("content-type", "")
             raw_body = response.read().decode("utf-8")
             if "application/json" not in content_type.lower():

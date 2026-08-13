@@ -242,10 +242,10 @@ export default function WorkspacePage() {
   const [newEntityInput, setNewEntityInput] = useState("");
 
   useEffect(() => {
-    // Instant restore dari LocalStorage untuk UX instan tanpa flicker saat refresh
+    // Instant client-side cache dari LocalStorage agar UX bebas flicker saat refresh
     const cachedEntity = localStorage.getItem("bizeto_active_entity");
     if (cachedEntity) setSelectedEntity(cachedEntity);
-    fetchSessionAndEntities();
+    void fetchSessionAndEntities();
   }, []);
 
   async function fetchSessionAndEntities() {
@@ -268,7 +268,7 @@ export default function WorkspacePage() {
         if (sess.theme) setThemeState(sess.theme);
       }
     } catch {
-      // fallback
+      // quiet fallback
     }
   }
 

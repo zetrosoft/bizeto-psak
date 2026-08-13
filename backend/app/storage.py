@@ -53,6 +53,42 @@ def ensure_storage() -> None:
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+              username TEXT PRIMARY KEY,
+              active_entity_id TEXT,
+              active_entity_name TEXT,
+              locale TEXT DEFAULT 'id',
+              theme TEXT DEFAULT 'system',
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entities (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL UNIQUE,
+              code TEXT,
+              created_by TEXT DEFAULT 'system',
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        # Populate default entities if empty
+        cursor = db.execute("SELECT COUNT(*) FROM entities")
+        if cursor.fetchone()[0] == 0:
+            now = now_iso()
+            db.executemany(
+                "INSERT INTO entities (id, name, code, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("ent-1", "PT Manufaktur Nusantara", "MN", "system", now),
+                    ("ent-2", "Toko Sinar Jaya", "SJ", "system", now),
+                    ("ent-3", "CV Gemilang Utama", "GU", "system", now),
+                ],
+            )
+            db.commit()
 
 
 def connect() -> sqlite3.Connection:
@@ -169,3 +205,57 @@ def insert_audit(db: sqlite3.Connection, document_id: str, actor: str, action: s
 def document_storage_path(document_id: str, filename: str) -> Path:
     safe_name = Path(filename).name.replace("/", "_")
     return UPLOAD_DIR / f"{document_id}-{safe_name}"
+
+
+def get_all_entities() -> list[dict[str, Any]]:
+    with connect() as db:
+        rows = db.execute("SELECT * FROM entities ORDER BY name ASC").fetchall()
+        return [{"id": r["id"], "name": r["name"], "code": r["code"], "created_at": r["created_at"]} for r in rows]
+
+
+def add_entity(name: str, created_by: str = "workspace_user") -> dict[str, Any]:
+    from uuid import uuid4
+    entity_id = f"ent-{uuid4().hex[:8]}"
+    now = now_iso()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO entities (id, name, created_by, created_at) VALUES (?, ?, ?, ?)",
+            (entity_id, name, created_by, now),
+        )
+        db.commit()
+    return {"id": entity_id, "name": name, "created_by": created_by, "created_at": now}
+
+
+def get_user_session(username: str) -> dict[str, Any]:
+    with connect() as db:
+        row = db.execute("SELECT * FROM user_sessions WHERE username = ?", (username,)).fetchone()
+        if not row:
+            return {"username": username, "active_entity_id": None, "active_entity_name": None, "locale": "id", "theme": "system"}
+        return {
+            "username": row["username"],
+            "active_entity_id": row["active_entity_id"],
+            "active_entity_name": row["active_entity_name"],
+            "locale": row["locale"],
+            "theme": row["theme"],
+            "updated_at": row["updated_at"],
+        }
+
+
+def save_user_session(username: str, active_entity_id: str | None, active_entity_name: str | None, locale: str = "id", theme: str = "system") -> dict[str, Any]:
+    now = now_iso()
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO user_sessions (username, active_entity_id, active_entity_name, locale, theme, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+              active_entity_id = excluded.active_entity_id,
+              active_entity_name = excluded.active_entity_name,
+              locale = excluded.locale,
+              theme = excluded.theme,
+              updated_at = excluded.updated_at
+            """,
+            (username, active_entity_id, active_entity_name, locale, theme, now),
+        )
+        db.commit()
+    return get_user_session(username)

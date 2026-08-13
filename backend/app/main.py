@@ -47,6 +47,41 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "bizeto-psak-backend"}
 
 
+@app.get("/api/entities")
+def get_entities() -> dict[str, Any]:
+    from app.storage import get_all_entities
+    entities = get_all_entities()
+    return {"entities": entities}
+
+
+@app.post("/api/entities")
+def create_entity(payload: dict[str, str]) -> dict[str, Any]:
+    from app.storage import add_entity
+    name = payload.get("name", "").strip()
+    username = payload.get("username", "workspace_user").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nama entitas tidak boleh kosong.")
+    entity = add_entity(name, created_by=username)
+    return {"entity": entity}
+
+
+@app.get("/api/user-session/{username}")
+def get_session(username: str) -> dict[str, Any]:
+    from app.storage import get_user_session
+    return get_user_session(username)
+
+
+@app.post("/api/user-session")
+def update_session(payload: dict[str, Any]) -> dict[str, Any]:
+    from app.storage import save_user_session
+    username = payload.get("username", "default_user").strip()
+    active_entity_id = payload.get("active_entity_id")
+    active_entity_name = payload.get("active_entity_name")
+    locale = payload.get("locale", "id")
+    theme = payload.get("theme", "system")
+    return save_user_session(username, active_entity_id, active_entity_name, locale, theme)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> dict:
     system_prompt = build_bizeto_chat_system_prompt(

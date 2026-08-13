@@ -90,7 +90,7 @@ type ChatMessage = {
   role: MessageRole;
   content: string;
   sourceId?: string;
-  actions?: "confirm_process";
+  actions?: "confirm_process" | "select_entity";
 };
 
 type ChatApiResponse = {
@@ -221,24 +221,87 @@ export default function WorkspacePage() {
   const showInspector = hasSource && inspector;
   const startMode = messages.length === 0 && !hasSource;
 
+  const [username, setUsername] = useState("default_user");
+  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const [entities, setEntities] = useState<Array<{ id: string; name: string }>>([]);
+  const [newEntityInput, setNewEntityInput] = useState("");
+
   useEffect(() => {
-    const savedLocale = localStorage.getItem("bizeto-locale") as Locale | null;
-    const browserLocale = navigator.language.toLowerCase().startsWith("id") ? "id" : "en";
-    setLocaleState(savedLocale || browserLocale);
-    const savedTheme = localStorage.getItem("bizeto-theme") as Theme | null;
-    if (savedTheme) setThemeState(savedTheme);
+    fetchSessionAndEntities();
   }, []);
+
+  async function fetchSessionAndEntities() {
+    try {
+      const [entitiesRes, sessionRes] = await Promise.all([
+        fetch("/api/entities"),
+        fetch(`/api/user-session/${username}`),
+      ]);
+      if (entitiesRes.ok) {
+        const data = await entitiesRes.json();
+        setEntities(data.entities || []);
+      }
+      if (sessionRes.ok) {
+        const sess = await sessionRes.json();
+        if (sess.active_entity_name) setSelectedEntity(sess.active_entity_name);
+        if (sess.locale) setLocaleState(sess.locale);
+        if (sess.theme) setThemeState(sess.theme);
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  async function persistUserSession(entityName: string | null, newLocale?: Locale, newTheme?: Theme) {
+    try {
+      const entityObj = entities.find((e) => e.name === entityName);
+      await postJson("/api/user-session", {
+        username,
+        active_entity_id: entityObj?.id ?? null,
+        active_entity_name: entityName,
+        locale: newLocale ?? locale,
+        theme: newTheme ?? theme,
+      });
+    } catch {
+      // quiet fallback
+    }
+  }
+
+  function handleSelectEntity(entityName: string) {
+    setSelectedEntity(entityName);
+    void persistUserSession(entityName);
+    pushMessage(
+      "assistant",
+      locale === "id"
+        ? `Entitas aktif untuk akun **${username}** berhasil dikaitkan ke **${entityName}** (Tersimpan permanen di database VPS untuk transaksi). Anda tetap bebas memilih entitas lain sewaktu-waktu untuk sekadar preview.`
+        : `Active entity for **${username}** successfully linked to **${entityName}** (Permanently stored in VPS database for transactions). You can still select other entities anytime for previewing.`
+    );
+  }
+
+  async function handleAddEntity() {
+    const name = newEntityInput.trim();
+    if (!name) return;
+    try {
+      const res = await postJson<{ entity: { name: string } }>("/api/entities", { name, username });
+      if (res.entity?.name) {
+        handleSelectEntity(res.entity.name);
+        setNewEntityInput("");
+        await fetchSessionAndEntities();
+      }
+    } catch {
+      handleSelectEntity(name);
+      setNewEntityInput("");
+    }
+  }
 
   useEffect(() => {
     const root = document.documentElement;
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     root.classList.toggle("dark", theme === "dark" || (theme === "system" && prefersDark));
-    localStorage.setItem("bizeto-theme", theme);
   }, [theme]);
 
   function setLocale(value: Locale) {
     setLocaleState(value);
-    localStorage.setItem("bizeto-locale", value);
+    void persistUserSession(selectedEntity, value, theme);
   }
 
   function updateChatDraft(value: string) {
@@ -256,6 +319,14 @@ export default function WorkspacePage() {
 
     updateChatDraft("");
     pushMessage("user", text);
+
+    if (!selectedEntity) {
+      const promptMsg = locale === "id"
+        ? "Sebelum kita memproses atau berdiskusi lebih jauh, silakan pilih nama klien/entitas yang sedang diampu, atau ketik nama entitas baru di bawah ini:"
+        : "Before we process or discuss further, please select an active client/entity, or enter a new entity name below:";
+      pushMessage("assistant", promptMsg, undefined, "select_entity");
+      return;
+    }
 
     const url = extractUrl(text);
     const explicitProcess = isExplicitProcess(text);
@@ -451,7 +522,9 @@ export default function WorkspacePage() {
           <span className="hidden truncate text-sm font-semibold sm:inline">{t.workspace}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-muted-foreground/80 md:inline">{t.entity} · {t.period}</span>
+          <span className="hidden text-xs font-bold text-gold md:inline">
+            🏢 {selectedEntity || t.entity} · {t.period}
+          </span>
           <button onClick={() => setLocale(locale === "id" ? "en" : "id")} className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-bold">
             <Languages size={14} /> {locale === "id" ? "EN" : "ID"}
           </button>
@@ -505,6 +578,12 @@ export default function WorkspacePage() {
                       message={message}
                       t={t}
                       source={message.sourceId ? sources.find((item) => item.id === message.sourceId) : undefined}
+                      entities={entities}
+                      selectedEntity={selectedEntity}
+                      newEntityInput={newEntityInput}
+                      setNewEntityInput={setNewEntityInput}
+                      onSelectEntity={handleSelectEntity}
+                      onAddEntity={() => void handleAddEntity()}
                       onUpdateOcrDraft={updateOcrDraft}
                       onRerunOcr={(source) => void rerunOcr(source)}
                       onConfirm={() => {
@@ -763,11 +842,17 @@ function ChatBubble(props: {
   message: ChatMessage;
   t: WorkspaceCopy;
   source?: WorkspaceSource;
+  entities: Array<{ id: string; name: string }>;
+  selectedEntity: string | null;
+  newEntityInput: string;
+  setNewEntityInput: (val: string) => void;
+  onSelectEntity: (name: string) => void;
+  onAddEntity: () => void;
   onUpdateOcrDraft: (sourceId: string, value: string) => void;
   onRerunOcr: (source: WorkspaceSource) => void;
   onConfirm: () => void;
 }) {
-  const { message, t, source, onConfirm, onRerunOcr, onUpdateOcrDraft } = props;
+  const { message, t, source, entities, selectedEntity, newEntityInput, setNewEntityInput, onSelectEntity, onAddEntity, onConfirm, onRerunOcr, onUpdateOcrDraft } = props;
   const isUser = message.role === "user";
   const isImageOcrReview = message.actions === "confirm_process" && source?.document?.document_type === "image_evidence";
   const showSourceCard = Boolean(source) && !isImageOcrReview;
@@ -801,6 +886,47 @@ function ChatBubble(props: {
                 rows={8}
                 className="max-h-72 min-h-36 w-full resize-y rounded-lg border border-line bg-canvas/45 p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
               />
+            </div>
+          )}
+          {message.actions === "select_entity" && (
+            <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-3">
+              <p className="mb-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">Pilihan Klien / Entitas:</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {entities.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => onSelectEntity(item.name)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                      selectedEntity === item.name
+                        ? "border-gold bg-gold/20 text-gold"
+                        : "border-line bg-panel text-ink hover:border-gold/50"
+                    }`}
+                  >
+                    🏢 {item.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ketik nama klien / perusahaan baru…"
+                  value={newEntityInput}
+                  onChange={(e) => setNewEntityInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void onAddEntity();
+                    }
+                  }}
+                  className="flex-1 rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs outline-none focus:border-gold"
+                />
+                <button
+                  onClick={onAddEntity}
+                  className="rounded-lg bg-gold px-3 py-1.5 text-xs font-bold text-white hover:brightness-105"
+                >
+                  + Tambah
+                </button>
+              </div>
             </div>
           )}
           {message.actions === "confirm_process" && source?.document && (
@@ -1241,9 +1367,9 @@ function buildSourcePlan(source: WorkspaceSource, locale: Locale, context?: stri
 
 function buildDiscussionReply(text: string, locale: Locale, hasSource: boolean) {
   if (locale === "id") {
-    return `${copy.id.discussionPrefix} ${hasSource ? "karena belum ada instruksi eksplisit untuk memproses bukti, saya akan tetap di mode diskusi. " : ""}Saya menangkap topiknya: “${text}”. Kita bisa bahas konteks akuntansinya dulu, menentukan data apa yang dibutuhkan, atau menyiapkan kriteria validasi sebelum ada proses data.`;
+    return `Saya adalah Senior Akuntan AI di Bizeto PSAK.\n\n${hasSource ? "Karena belum ada instruksi untuk memproses berkas, saya siap membantu mendiskusikan konteks bukti ini lebih lanjut. " : ""}Mengenai topik “${text}”, ada aspek akuntansi PSAK, pengaturan entitas, atau kriteria validasi tertentu yang ingin kita bahas bersama?`;
   }
-  return `${copy.en.discussionPrefix} ${hasSource ? "because there is no explicit instruction to process the evidence, I will stay in discussion mode. " : ""}I understand the topic as: “${text}”. We can discuss the accounting context, decide which data is required, or define validation criteria before processing any data.`;
+  return `I am the Senior AI Accountant at Bizeto PSAK.\n\n${hasSource ? "Since there is no instruction to process the file yet, I am ready to discuss this evidence further. " : ""}Regarding “${text}”, are there specific PSAK accounting standards, entity policies, or validation criteria you would like to explore together?`;
 }
 
 function isExplicitProcess(text: string) {

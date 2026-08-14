@@ -63,35 +63,76 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                 ),
             }
 
-        # Generate HTML Table Murni untuk Teks/Tabel PDF Digital
+        # Deteksi apakah ini Laporan Buku Besar (General Ledger Report)
+        is_gl_report = "GENERAL LEDGER" in full_text.upper() or "BUKU BESAR" in full_text.upper() or "ACCOUNT NAME" in full_text.upper()
+
         html_buffer = []
         html_buffer.append('<div class="overflow-x-auto my-3 rounded-xl border border-gold/30 shadow-sm bg-panel">')
         html_buffer.append('  <div class="bg-gold/10 px-4 py-2 border-b border-gold/20 flex items-center justify-between">')
         html_buffer.append(f'    <span class="text-xs font-bold text-ink flex items-center gap-1.5">📄 Preview Dokumen PDF ({html.escape(file_path.name)})</span>')
-        html_buffer.append(f'    <span class="text-[10px] text-muted-foreground">{total_pages} Halaman</span>')
+        html_buffer.append(f'    <span class="text-[10px] font-semibold text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/30">{ "Laporan Buku Besar (GL)" if is_gl_report else "PDF Terstruktur" } · {total_pages} Halaman</span>')
         html_buffer.append('  </div>')
-        html_buffer.append('  <table class="w-full text-left text-xs border-collapse">')
-        
-        html_buffer.append('    <thead>')
-        html_buffer.append('      <tr class="bg-muted/80 text-ink font-semibold border-b border-line">')
-        html_buffer.append('        <th class="px-3.5 py-2.5 w-16">Hal.</th>')
-        html_buffer.append('        <th class="px-3.5 py-2.5">Ekstraksi Baris / Teks Terbaca</th>')
-        html_buffer.append('      </tr>')
-        html_buffer.append('    </thead>')
 
-        html_buffer.append('    <tbody class="divide-y divide-line/40 text-ink">')
-        row_counter = 0
-        for p in extracted_pages:
-            for line in p["lines"][:8]: # Ambil 8 baris per halaman
-                row_counter += 1
-                bg_cls = "bg-panel" if row_counter % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
-                html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
-                html_buffer.append(f'        <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
-                html_buffer.append(f'        <td class="px-3.5 py-2 font-mono text-[11px]">{html.escape(line)}</td>')
-                html_buffer.append('      </tr>')
+        if is_gl_report:
+            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi
+            html_buffer.append('  <table class="w-full text-left text-xs border-collapse">')
+            html_buffer.append('    <thead>')
+            html_buffer.append('      <tr class="bg-muted/80 text-ink font-semibold border-b border-line">')
+            html_buffer.append('        <th class="px-3 py-2 w-10">Hal.</th>')
+            html_buffer.append('        <th class="px-3 py-2 w-24">Tanggal</th>')
+            html_buffer.append('        <th class="px-3 py-2 w-28">No. Ref</th>')
+            html_buffer.append('        <th class="px-3 py-2">Deskripsi / Keterangan</th>')
+            html_buffer.append('        <th class="px-3 py-2 text-right">Debit (IDR)</th>')
+            html_buffer.append('        <th class="px-3 py-2 text-right">Credit (IDR)</th>')
+            html_buffer.append('      </tr>')
+            html_buffer.append('    </thead>')
+            html_buffer.append('    <tbody class="divide-y divide-line/40 text-ink">')
 
-        html_buffer.append('    </tbody>')
-        html_buffer.append('  </table>')
+            row_idx = 0
+            for p in extracted_pages:
+                for line in p["lines"]:
+                    # Abaikan header judul berulang
+                    if any(ign in line for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref"]):
+                        continue
+                    row_idx += 1
+                    bg_cls = "bg-panel" if row_idx % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
+                    
+                    # Parsing regex/split cerdas baris transaksi GL
+                    parts = line.split()
+                    tgl = parts[0] if len(parts) > 0 and "/" in parts[0] else "-"
+                    ref = parts[1] if len(parts) > 1 and ("-" in parts[1] or parts[1].isalnum()) else "-"
+                    
+                    html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
+                    html_buffer.append(f'        <td class="px-3 py-2 text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(tgl)}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap">{html.escape(ref)}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px]">{html.escape(line)}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right">-</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right">-</td>')
+                    html_buffer.append('      </tr>')
+            html_buffer.append('    </tbody>')
+            html_buffer.append('  </table>')
+        else:
+            # Render Tabel Umum Teks Baris PDF
+            html_buffer.append('  <table class="w-full text-left text-xs border-collapse">')
+            html_buffer.append('    <thead>')
+            html_buffer.append('      <tr class="bg-muted/80 text-ink font-semibold border-b border-line">')
+            html_buffer.append('        <th class="px-3.5 py-2.5 w-16">Hal.</th>')
+            html_buffer.append('        <th class="px-3.5 py-2.5">Ekstraksi Baris / Teks Terbaca</th>')
+            html_buffer.append('      </tr>')
+            html_buffer.append('    </thead>')
+            html_buffer.append('    <tbody class="divide-y divide-line/40 text-ink">')
+            row_counter = 0
+            for p in extracted_pages:
+                for line in p["lines"][:12]:
+                    row_counter += 1
+                    bg_cls = "bg-panel" if row_counter % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
+                    html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
+                    html_buffer.append(f'        <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
+                    html_buffer.append(f'        <td class="px-3.5 py-2 font-mono text-[11px]">{html.escape(line)}</td>')
+                    html_buffer.append('      </tr>')
+            html_buffer.append('    </tbody>')
+            html_buffer.append('  </table>')
         if total_pages > max_pages:
             html_buffer.append(f'  <div class="px-4 py-1.5 text-[10px] text-muted-foreground bg-muted/30 border-t border-line text-center">Menampilkan preview {max_pages} halaman pertama dari total {total_pages} halaman PDF</div>')
         html_buffer.append('</div>')

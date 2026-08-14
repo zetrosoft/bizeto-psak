@@ -74,18 +74,18 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
         html_buffer.append('  </div>')
 
         if is_gl_report:
-            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi 7 Kolom Lengkap dengan Auto Scroll & Border Halus
-            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40">')
+            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi 7 Kolom Lengkap dengan Auto Scroll, Solid Header, & Action Buttons
+            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40 bg-panel">')
             html_buffer.append('    <table class="w-full text-left text-xs border-collapse whitespace-nowrap">')
             html_buffer.append('      <thead>')
-            html_buffer.append('        <tr class="sticky top-0 z-10 bg-muted/90 text-ink font-semibold border-b border-line shadow-xs">')
-            html_buffer.append('          <th class="px-3 py-2 w-10 border-r border-line/40">Hal.</th>')
-            html_buffer.append('          <th class="px-3 py-2 w-24 border-r border-line/40">Tanggal</th>')
-            html_buffer.append('          <th class="px-3 py-2 w-28 border-r border-line/40">No. Ref</th>')
-            html_buffer.append('          <th class="px-3 py-2 border-r border-line/40">Deskripsi / Keterangan</th>')
-            html_buffer.append('          <th class="px-3 py-2 text-right border-r border-line/40">Debit (IDR)</th>')
-            html_buffer.append('          <th class="px-3 py-2 text-right border-r border-line/40">Credit (IDR)</th>')
-            html_buffer.append('          <th class="px-3 py-2 text-right">Saldo (IDR)</th>')
+            html_buffer.append('        <tr class="sticky top-0 z-10 bg-panel text-ink font-bold border-b border-line shadow-xs">')
+            html_buffer.append('          <th class="px-3 py-2.5 w-10 border-r border-line/40 bg-panel">Hal.</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 w-24 border-r border-line/40 bg-panel">Tanggal</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 w-28 border-r border-line/40 bg-panel">No. Ref</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 border-r border-line/40 bg-panel">Deskripsi / Keterangan</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 text-right border-r border-line/40 bg-panel">Debit (IDR)</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 text-right border-r border-line/40 bg-panel">Credit (IDR)</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 text-right bg-panel">Saldo (IDR)</th>')
             html_buffer.append('        </tr>')
             html_buffer.append('      </thead>')
             html_buffer.append('      <tbody class="divide-y divide-line/40 text-ink">')
@@ -174,7 +174,7 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
 
                     desc = " ".join(non_num_tokens)
 
-                html_buffer.append(f'        <tr class="{bg_cls} transition-colors">')
+                html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40">')
                 html_buffer.append(f'          <td class="px-3 py-2 text-muted-foreground font-mono text-[11px] border-r border-line/30">{rec["page"]}</td>')
                 html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30">{html.escape(tgl)}</td>')
                 html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap border-r border-line/30">{html.escape(ref)}</td>')
@@ -189,12 +189,12 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
             html_buffer.append('  </div>')
         else:
             # Render Tabel Umum Teks Baris PDF dengan scrollbar & border halus
-            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40">')
+            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40 bg-panel">')
             html_buffer.append('    <table class="w-full text-left text-xs border-collapse whitespace-nowrap">')
             html_buffer.append('      <thead>')
-            html_buffer.append('        <tr class="sticky top-0 z-10 bg-muted/90 text-ink font-semibold border-b border-line shadow-xs">')
-            html_buffer.append('          <th class="px-3.5 py-2.5 w-16 border-r border-line/40">Hal.</th>')
-            html_buffer.append('          <th class="px-3.5 py-2.5">Ekstraksi Baris / Teks Terbaca</th>')
+            html_buffer.append('        <tr class="sticky top-0 z-10 bg-panel text-ink font-bold border-b border-line shadow-xs">')
+            html_buffer.append('          <th class="px-3.5 py-2.5 w-16 border-r border-line/40 bg-panel">Hal.</th>')
+            html_buffer.append('          <th class="px-3.5 py-2.5 bg-panel">Ekstraksi Baris / Teks Terbaca</th>')
             html_buffer.append('        </tr>')
             html_buffer.append('      </thead>')
             html_buffer.append('      <tbody class="divide-y divide-line/40 text-ink">')
@@ -203,15 +203,22 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                 for line in p["lines"][:12]:
                     row_counter += 1
                     bg_cls = "bg-panel" if row_counter % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
-                    html_buffer.append(f'        <tr class="{bg_cls} transition-colors">')
+                    html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40">')
                     html_buffer.append(f'          <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px] border-r border-line/30">{p["page"]}</td>')
                     html_buffer.append(f'          <td class="px-3.5 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(line)}</td>')
                     html_buffer.append('        </tr>')
             html_buffer.append('      </tbody>')
             html_buffer.append('    </table>')
             html_buffer.append('  </div>')
-        if total_pages > max_pages:
-            html_buffer.append(f'  <div class="px-4 py-1.5 text-[10px] text-muted-foreground bg-muted/30 border-t border-line text-center">Menampilkan preview {max_pages} halaman pertama dari total {total_pages} halaman PDF</div>')
+        
+        # Action Bar (Tombol Konfirmasi & Edit Draf)
+        html_buffer.append('  <div class="p-3 bg-muted/30 border-t border-line flex items-center justify-between gap-3">')
+        html_buffer.append('    <span class="text-[11px] text-muted-foreground font-medium">Status: <strong class="text-amber-500 font-bold">DRAFT</strong> (Belum Diposting)</span>')
+        html_buffer.append('    <div class="flex items-center gap-2">')
+        html_buffer.append('      <button onclick="window.dispatchEvent(new CustomEvent(\'bizeto:edit-draft\'))" class="px-3 py-1.5 rounded-lg border border-line bg-panel text-xs font-semibold text-ink hover:bg-muted transition">✏️ Edit Draf</button>')
+        html_buffer.append('      <button onclick="window.dispatchEvent(new CustomEvent(\'bizeto:confirm-post\'))" class="px-3.5 py-1.5 rounded-lg bg-gold text-xs font-bold text-white shadow-xs hover:bg-gold/90 transition">✓ Konfirmasi Posting</button>')
+        html_buffer.append('    </div>')
+        html_buffer.append('  </div>')
         html_buffer.append('</div>')
 
         return {

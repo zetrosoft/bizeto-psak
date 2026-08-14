@@ -636,6 +636,9 @@ export default function WorkspacePage() {
           <span className="hidden truncate text-sm font-semibold sm:inline">{t.workspace}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={reset} className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs font-bold text-gold hover:bg-gold hover:text-white transition">
+            <Plus size={14} /> {t.reset}
+          </button>
           <span className="hidden text-xs font-bold text-gold md:inline">
             🏢 {selectedEntity || t.entity} · {t.period}
           </span>
@@ -958,23 +961,33 @@ function WorkspaceSidebar(props: {
       </div>
 
       <div>
-        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">{t.sources}</p>
+        <div className="flex items-center justify-between mb-2 px-1">
+          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">📜 {locale === "id" ? "Riwayat Sesi Draf" : "Draft Session History"}</p>
+          <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">DRAFT</span>
+        </div>
         {sources.length === 0 ? (
           <p className="rounded-lg border border-line bg-canvas/35 p-3 text-xs text-muted-foreground">{t.noSources}</p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {sources.map((source) => (
               <button
                 key={source.id}
                 onClick={() => setSelectedSourceId(source.id)}
-                className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition ${
-                  selectedSourceId === source.id ? "bg-gold/10 text-ink ring-1 ring-gold/25" : "text-muted-foreground hover:bg-muted hover:text-ink"
+                className={`flex w-full items-start gap-2 rounded-xl p-2.5 text-left transition border ${
+                  selectedSourceId === source.id ? "bg-gold/10 border-gold/40 text-ink ring-1 ring-gold/25" : "border-line/60 bg-panel text-muted-foreground hover:bg-muted hover:text-ink"
                 }`}
               >
-                <FileSpreadsheet size={14} className={selectedSourceId === source.id ? "mt-0.5 shrink-0 text-gold" : "mt-0.5 shrink-0"} />
-                <span className="min-w-0">
-                  <span className="block truncate text-xs font-semibold">{source.label}</span>
-                  <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{source.detail}</span>
+                <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-gold/15 text-gold mt-0.5">
+                  <FileSpreadsheet size={14} />
+                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-bold text-ink">{source.label}</span>
+                  <span className="mt-0.5 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span className="truncate">{source.detail}</span>
+                    <span className={`ml-1 font-bold ${source.status === "confirmed" ? "text-teal" : "text-amber-500"}`}>
+                      {source.status === "confirmed" ? "✓ POSTED" : "● DRAFT"}
+                    </span>
+                  </span>
                 </span>
               </button>
             ))}
@@ -1416,7 +1429,6 @@ function Composer(props: {
             className="max-h-[180px] min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground"
           />
           <button onClick={() => void onSend()} className="mb-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-gold text-white" aria-label="Send"><ArrowUp size={15} /></button>
-          <button onClick={onReset} className="mb-0.5 hidden rounded-lg border border-line px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-ink sm:block">{t.reset}</button>
         </div>
       </div>
     </div>
@@ -1549,7 +1561,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00046
+          v2.0.0.00047
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

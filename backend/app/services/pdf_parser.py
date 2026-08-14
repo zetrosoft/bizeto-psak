@@ -91,24 +91,53 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
             row_idx = 0
             for p in extracted_pages:
                 for line in p["lines"]:
-                    # Abaikan header judul berulang
-                    if any(ign in line for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref"]):
+                    # Abaikan header/footer berulang
+                    if any(ign in line for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe"]):
                         continue
+                    
                     row_idx += 1
                     bg_cls = "bg-panel" if row_idx % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
                     
-                    # Parsing regex/split cerdas baris transaksi GL
+                    # Parsing Regex Cerdas Baris Transaksi Buku Besar
+                    # Format tipikal: DD/MM/YYYY [REF_NO] [Deskripsi...] [Debit/Credit] [Saldo]
                     parts = line.split()
-                    tgl = parts[0] if len(parts) > 0 and "/" in parts[0] else "-"
-                    ref = parts[1] if len(parts) > 1 and ("-" in parts[1] or parts[1].isalnum()) else "-"
-                    
+                    tgl = "-"
+                    ref = "-"
+                    deskripsi = line
+                    debit = "-"
+                    kredit = "-"
+                    saldo = "-"
+
+                    if len(parts) >= 3 and "/" in parts[0] and len(parts[0]) == 10:
+                        tgl = parts[0]
+                        ref = parts[1] if ("-" in parts[1] or parts[1].isalnum()) else "-"
+                        
+                        # Ambil angka-angka nominal di ujung baris
+                        num_parts = [p for p in parts[2:] if p.replace(".", "").replace(",", "").replace("-", "").replace("(", "").replace(")", "").isdigit()]
+                        if len(num_parts) >= 2:
+                            saldo = num_parts[-1]
+                            nominal = num_parts[-2]
+                            # Tentukan Debit vs Kredit dari kata kunci Deskripsi atau struktur angka
+                            if any(k in line.upper() for k in ["PEMBELIAN", "PUR-", "EXP-", "PELUNASAN", "TRANSAKSI"]):
+                                kredit = nominal
+                            else:
+                                debit = nominal
+                            
+                            # Deskripsi adalah sisa kata di tengah
+                            desc_words = [w for w in parts[2:] if w not in num_parts]
+                            deskripsi = " ".join(desc_words) if desc_words else line
+                        elif len(num_parts) == 1:
+                            saldo = num_parts[0]
+                            desc_words = [w for w in parts[2:-1]]
+                            deskripsi = " ".join(desc_words) if desc_words else line
+
                     html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
                     html_buffer.append(f'        <td class="px-3 py-2 text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
                     html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(tgl)}</td>')
                     html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap">{html.escape(ref)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px]">{html.escape(line)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right">-</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right">-</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px]">{html.escape(deskripsi)}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right text-emerald-600 font-semibold">{html.escape(debit)}</td>')
+                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right text-amber-600 font-semibold">{html.escape(kredit)}</td>')
                     html_buffer.append('      </tr>')
             html_buffer.append('    </tbody>')
             html_buffer.append('  </table>')

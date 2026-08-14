@@ -246,7 +246,24 @@ export default function WorkspacePage() {
     const cachedEntity = localStorage.getItem("bizeto_active_entity");
     if (cachedEntity) setSelectedEntity(cachedEntity);
     void fetchSessionAndEntities();
-  }, []);
+
+    // Event listener global untuk Tombol Aksi Konfirmasi Posting & Edit Draf di Bubble Chat Table
+    const handleConfirmPost = () => {
+      void confirmResult();
+    };
+    const handleEditDraft = () => {
+      updateChatDraft("Saya ingin merevisi/mengedit data draf berikut: ");
+      chatRef.current?.focus();
+    };
+
+    window.addEventListener("bizeto:confirm-post", handleConfirmPost);
+    window.addEventListener("bizeto:edit-draft", handleEditDraft);
+
+    return () => {
+      window.removeEventListener("bizeto:confirm-post", handleConfirmPost);
+      window.removeEventListener("bizeto:edit-draft", handleEditDraft);
+    };
+  }, [selectedSource]);
 
   async function fetchSessionAndEntities() {
     try {
@@ -657,7 +674,7 @@ export default function WorkspacePage() {
         <aside className="hidden h-full min-h-0 border-r border-line bg-panel/45 p-4 lg:flex lg:flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
             {startMode ? (
-              <StartSidebar t={t} />
+              <StartSidebar t={t} sources={sources} onSelectSource={setSelectedSourceId} />
             ) : (
               <WorkspaceSidebar
                 locale={locale}
@@ -884,18 +901,47 @@ function StartRoom(props: {
   );
 }
 
-function StartSidebar({ t }: { t: WorkspaceCopy }) {
+function StartSidebar(props: { t: WorkspaceCopy; sources: WorkspaceSource[]; onSelectSource: (id: string) => void }) {
+  const { t, sources, onSelectSource } = props;
+  const [showMyWorkspaces, setShowMyWorkspaces] = useState(false);
+
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       <SidebarGroup title={t.explore} items={[
         { icon: Sparkles, label: t.playground },
         { icon: History, label: t.history },
       ]} />
-      <SidebarGroup title={t.process} items={[
-        { icon: Plus, label: t.newWorkspace, active: true },
-        { icon: ClipboardList, label: t.myWorkspaces },
-        { icon: Grid2X2, label: t.templates },
-      ]} />
+      
+      <div>
+        <SidebarGroup title={t.process} items={[
+          { icon: Plus, label: t.newWorkspace, active: !showMyWorkspaces, onClick: () => setShowMyWorkspaces(false) },
+          { icon: ClipboardList, label: `${t.myWorkspaces} (${sources.length})`, active: showMyWorkspaces, onClick: () => setShowMyWorkspaces(true) },
+          { icon: Grid2X2, label: t.templates },
+        ]} />
+
+        {showMyWorkspaces && (
+          <div className="mt-3 rounded-xl border border-line/60 bg-canvas/45 p-2 space-y-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">📁 Sesi Workspace Dibuat:</p>
+            {sources.length === 0 ? (
+              <p className="text-xs text-muted-foreground px-2 py-1">Belum ada workspace dibuat.</p>
+            ) : (
+              sources.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onSelectSource(item.id)}
+                  className="flex w-full items-center justify-between rounded-lg p-2 text-left text-xs font-semibold hover:bg-muted hover:text-ink transition"
+                >
+                  <span className="truncate">{item.label}</span>
+                  <span className={`text-[10px] font-bold ${item.status === "confirmed" ? "text-teal" : "text-amber-500"}`}>
+                    {item.status === "confirmed" ? "POSTED" : "DRAFT"}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       <SidebarGroup title={t.manage} items={[
         { icon: Gauge, label: t.entities },
         { icon: Settings, label: "COA" },
@@ -905,13 +951,13 @@ function StartSidebar({ t }: { t: WorkspaceCopy }) {
   );
 }
 
-function SidebarGroup({ title, items }: { title: string; items: Array<{ icon: LucideIcon; label: string; active?: boolean }> }) {
+function SidebarGroup({ title, items }: { title: string; items: Array<{ icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }> }) {
   return (
     <div>
       <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">{title}</p>
       <div className="space-y-1">
-        {items.map(({ icon: Icon, label, active }) => (
-          <button key={label} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${active ? "bg-muted text-ink" : "text-muted-foreground/80 hover:bg-muted hover:text-ink"}`}>
+        {items.map(({ icon: Icon, label, active, onClick }) => (
+          <button key={label} onClick={onClick} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${active ? "bg-muted text-ink font-bold" : "text-muted-foreground/80 hover:bg-muted hover:text-ink"}`}>
             <Icon size={15} />
             <span className="truncate">{label}</span>
           </button>
@@ -1185,24 +1231,25 @@ function ChatBubble(props: {
 }
 
 function MarkdownContent({ text }: { text: string }) {
-  // Jika teks pesan mengandung elemen HTML murni (seperti <div class= atau <table), pisahkan bagian HTML dan Markdown
-  const htmlBlockRegex = /(<div[\s\S]*?<\/div>|<table[\s\S]*?<\/table>)/gi;
+  // Tangkap seluruh blok HTML murni dari <div class=... hingga </div> terluar
+  const htmlBlockRegex = /(<div\b[\s\S]*<\/div>|<table\b[\s\S]*<\/table>)/gi;
   const parts = text.split(htmlBlockRegex);
 
   return (
     <div className="space-y-2">
       {parts.map((part, idx) => {
-        if (!part.trim()) return null;
-        if (part.trim().startsWith("<div") || part.trim().startsWith("<table")) {
+        const cleanPart = part.trim().replace(/^(<\/div>)+|(<\/div>)+$/g, "").trim();
+        if (!cleanPart) return null;
+        if (cleanPart.startsWith("<div") || cleanPart.startsWith("<table")) {
           return (
             <div
               key={idx}
-              dangerouslySetInnerHTML={{ __html: part }}
+              dangerouslySetInnerHTML={{ __html: cleanPart }}
               className="my-2"
             />
           );
         }
-        return <MarkdownSubBlocks key={idx} text={part} />;
+        return <MarkdownSubBlocks key={idx} text={cleanPart} />;
       })}
     </div>
   );
@@ -1561,7 +1608,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00047
+          v2.0.0.00048
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

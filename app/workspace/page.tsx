@@ -636,6 +636,13 @@ export default function WorkspacePage() {
           <span className="hidden truncate text-sm font-semibold sm:inline">{t.workspace}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Build Sequence Number (Format: v2.0.0.{5digit}) */}
+          <div className="hidden flex-col items-end pr-1 sm:flex">
+            <span className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground/80">BUILD</span>
+            <span className="rounded bg-gold/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gold border border-gold/20 shadow-2xs">
+              v2.0.0.00042
+            </span>
+          </div>
           <span className="hidden text-xs font-bold text-gold md:inline">
             🏢 {selectedEntity || t.entity} · {t.period}
           </span>

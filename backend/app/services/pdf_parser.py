@@ -74,12 +74,13 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
         html_buffer.append('  </div>')
 
         if is_gl_report:
-            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi 7 Kolom Lengkap dengan Auto Scroll, Solid Header, & Action Buttons
+            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi 8 Kolom Lengkap (termasuk Akun / Account Name)
             html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40 bg-panel">')
             html_buffer.append('    <table class="w-full text-left text-xs border-collapse whitespace-nowrap">')
             html_buffer.append('      <thead>')
             html_buffer.append('        <tr class="sticky top-0 z-10 bg-panel text-ink font-bold border-b border-line shadow-xs">')
             html_buffer.append('          <th class="px-3 py-2.5 w-10 border-r border-line/40 bg-panel">Hal.</th>')
+            html_buffer.append('          <th class="px-3 py-2.5 w-44 border-r border-line/40 bg-panel">Akun / Account Name</th>')
             html_buffer.append('          <th class="px-3 py-2.5 w-24 border-r border-line/40 bg-panel">Tanggal</th>')
             html_buffer.append('          <th class="px-3 py-2.5 w-28 border-r border-line/40 bg-panel">No. Ref</th>')
             html_buffer.append('          <th class="px-3 py-2.5 border-r border-line/40 bg-panel">Deskripsi / Keterangan</th>')
@@ -90,8 +91,9 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
             html_buffer.append('      </thead>')
             html_buffer.append('      <tbody class="divide-y divide-line/40 text-ink">')
 
-            # Algoritma Pengelompokan Baris Transaksi (Grouping Multiline Records)
+            # Algoritma Pengelompokan Baris Transaksi & Tracking Account Name
             gl_records: list[dict[str, Any]] = []
+            current_account_name = "Kas / Bank General"  # Default fallback account name
             
             for p in extracted_pages:
                 page_num = p["page"]
@@ -101,24 +103,32 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                     line_str = line.strip()
                     if not line_str:
                         continue
-                    # Abaikan header/footer sistem berulang serta nama akun (Account Name / Kode Akun)
-                    if any(ign in line_str for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe", "Account:"]):
+
+                    # Deteksi penanda Header Account Name (misal: "Account Name: Kas Besar", "1101 - Kas", dll)
+                    if "ACCOUNT NAME" in line_str.upper() or "ACCOUNT:" in line_str.upper() or line_str.upper().startswith("ACCOUNT"):
+                        parts = line_str.split(":", 1)
+                        if len(parts) > 1 and parts[1].strip():
+                            current_account_name = parts[1].strip()
+                        else:
+                            current_account_name = line_str.replace("Account Name", "").replace("Account", "").strip(": ").strip()
                         continue
-                    # Abaikan baris yang diawali dengan kata "Account" atau memuat nama akun di awal
-                    if line_str.upper().startswith("ACCOUNT") or "ACCOUNT NAME" in line_str.upper():
+
+                    # Abaikan header/footer sistem berulang
+                    if any(ign in line_str for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe"]):
                         continue
 
                     parts = line_str.split()
                     is_new_tx = len(parts) >= 2 and "/" in parts[0] and len(parts[0]) == 10 and parts[0][:2].isdigit()
 
                     if is_new_tx:
-                        # Buat record baru
+                        # Buat record baru yang terhubung ke current_account_name
                         tgl = parts[0]
                         ref = parts[1] if (len(parts) > 1 and ("-" in parts[1] or parts[1].isalnum()) and not parts[1].replace(".", "").replace(",", "").isdigit()) else "-"
                         remains = parts[2:] if ref != "-" else parts[1:]
 
                         gl_records.append({
                             "page": page_num,
+                            "account_name": current_account_name,
                             "tgl": tgl,
                             "ref": ref,
                             "tokens": remains,
@@ -132,6 +142,7 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                         else:
                             gl_records.append({
                                 "page": page_num,
+                                "account_name": current_account_name,
                                 "tgl": "-",
                                 "ref": "-",
                                 "tokens": parts,
@@ -143,15 +154,13 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                 bg_cls = "bg-panel" if idx % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
                 tokens = rec["tokens"]
                 
+                account_name = rec["account_name"]
                 tgl = rec["tgl"]
                 ref = rec["ref"]
                 debit = "-"
                 kredit = "-"
                 saldo = "-"
                 desc = " ".join(tokens)
-
-                # Filter lagi kata 'Account Name' jika terselip dalam deskripsi
-                desc = desc.replace("Account Name", "").replace("Account:", "").strip()
 
                 # Cari token angka nominal di bagian akhir
                 num_tokens = []
@@ -178,10 +187,11 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                     elif len(num_tokens) == 1:
                         saldo = num_tokens[0]
 
-                    desc = " ".join(non_num_tokens).replace("Account Name", "").strip()
+                    desc = " ".join(non_num_tokens).strip()
 
                 html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40 group hover:bg-gold/10">')
                 html_buffer.append(f'          <td class="px-3 py-2 text-muted-foreground font-mono text-[11px] border-r border-line/30">{rec["page"]}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] font-semibold text-teal whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-teal outline-none rounded">{html.escape(account_name)}</td>')
                 html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(tgl)}</td>')
                 html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(ref)}</td>')
                 html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(desc)}</td>')

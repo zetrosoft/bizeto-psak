@@ -1614,7 +1614,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00049
+          v2.0.0.00050
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

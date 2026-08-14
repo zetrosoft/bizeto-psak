@@ -488,3 +488,21 @@ def save_user_session(username: str, active_entity_id: str | None, active_entity
         )
         db.commit()
     return get_user_session(username)
+
+
+def list_documents(limit: int = 50) -> list[dict[str, Any]]:
+    ensure_storage()
+    if HAS_POSTGRES:
+        try:
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                    cur.execute("SELECT * FROM documents ORDER BY captured_at DESC LIMIT %s", (limit,))
+                    rows = cur.fetchall()
+                    return [dict(r) for r in rows]
+        except Exception as exc:
+            print(f"[Storage] Warning: Failed Postgres list_documents ({exc}), falling back to SQLite.")
+
+    with sqlite3.connect(DB_PATH) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute("SELECT * FROM documents ORDER BY captured_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]

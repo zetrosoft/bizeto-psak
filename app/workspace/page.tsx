@@ -48,6 +48,7 @@ type BackendDocument = {
   source_type: string;
   source_label: string;
   filename?: string | null;
+  size_bytes?: number;
   document_type: string;
   status: string;
 };
@@ -224,9 +225,15 @@ export default function WorkspacePage() {
   } | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
   const [apiError, setApiError] = useState("");
   const chatRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
   const t = copy[locale];
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isAiThinking]);
 
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? sources[0] ?? null,
@@ -267,9 +274,10 @@ export default function WorkspacePage() {
 
   async function fetchSessionAndEntities() {
     try {
-      const [entitiesRes, sessionRes] = await Promise.all([
+      const [entitiesRes, sessionRes, docsRes] = await Promise.all([
         fetch("/api/entities"),
         fetch(`/api/user-session/${username}`),
+        fetch("/api/documents"),
       ]);
       if (entitiesRes.ok) {
         const data = await entitiesRes.json();
@@ -283,6 +291,21 @@ export default function WorkspacePage() {
         }
         if (sess.locale) setLocaleState(sess.locale);
         if (sess.theme) setThemeState(sess.theme);
+      }
+      if (docsRes.ok) {
+        const docs = await docsRes.json() as BackendDocument[];
+        if (docs && docs.length > 0) {
+          const loadedSources: WorkspaceSource[] = docs.map((doc) => ({
+            id: doc.id,
+            kind: doc.source_type === "url" ? "url" : "file",
+            label: doc.filename || doc.source_label,
+            detail: `${doc.document_type} · ${((doc.size_bytes || 0) / 1024).toFixed(1)} KB`,
+            status: (doc.status === "confirmed" ? "confirmed" : "attached") as WorkspaceSource["status"],
+            document: doc,
+          }));
+          setSources(loadedSources);
+          setSelectedSourceId(loadedSources[0].id);
+        }
       }
     } catch {
       // quiet fallback
@@ -366,8 +389,6 @@ export default function WorkspacePage() {
     input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
     input.style.overflowY = input.scrollHeight > 180 ? "auto" : "hidden";
   }
-
-  const [isAiThinking, setIsAiThinking] = useState(false);
 
   async function askAiChat(text: string, overrideEntity?: string) {
     setIsAiThinking(true);
@@ -773,6 +794,7 @@ export default function WorkspacePage() {
                       onConfirm={confirmResult}
                     />
                   )}
+                  <div ref={messageEndRef} />
                 </div>
               )}
             </div>
@@ -1614,7 +1636,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00050
+          v2.0.0.00051
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

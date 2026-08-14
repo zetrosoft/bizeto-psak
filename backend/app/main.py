@@ -392,3 +392,10 @@ def _resume_from_smart_note(document_id: str, document_type: str, parsed: dict, 
         "journal_candidates": parsed["journal_candidates"],
         "next_action": "Preview teks asli dan kandidat jurnal, lalu konfirmasi jika klasifikasi sudah benar.",
     }
+
+
+@app.get("/api/documents", response_model=list[UploadedDocument])
+def list_all_documents() -> list[dict]:
+    from app.storage import list_documents, row_to_document
+    rows = list_documents(limit=50)
+    return [row_to_document(r) for r in rows]

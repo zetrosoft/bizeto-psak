@@ -74,94 +74,142 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
         html_buffer.append('  </div>')
 
         if is_gl_report:
-            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi
-            html_buffer.append('  <table class="w-full text-left text-xs border-collapse">')
-            html_buffer.append('    <thead>')
-            html_buffer.append('      <tr class="bg-muted/80 text-ink font-semibold border-b border-line">')
-            html_buffer.append('        <th class="px-3 py-2 w-10">Hal.</th>')
-            html_buffer.append('        <th class="px-3 py-2 w-24">Tanggal</th>')
-            html_buffer.append('        <th class="px-3 py-2 w-28">No. Ref</th>')
-            html_buffer.append('        <th class="px-3 py-2">Deskripsi / Keterangan</th>')
-            html_buffer.append('        <th class="px-3 py-2 text-right">Debit (IDR)</th>')
-            html_buffer.append('        <th class="px-3 py-2 text-right">Credit (IDR)</th>')
-            html_buffer.append('      </tr>')
-            html_buffer.append('    </thead>')
-            html_buffer.append('    <tbody class="divide-y divide-line/40 text-ink">')
+            # Render Tabel Khusus Buku Besar Multi-Kolom Presisi 7 Kolom Lengkap dengan Auto Scroll & Border Halus
+            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40">')
+            html_buffer.append('    <table class="w-full text-left text-xs border-collapse whitespace-nowrap">')
+            html_buffer.append('      <thead>')
+            html_buffer.append('        <tr class="sticky top-0 z-10 bg-muted/90 text-ink font-semibold border-b border-line shadow-xs">')
+            html_buffer.append('          <th class="px-3 py-2 w-10 border-r border-line/40">Hal.</th>')
+            html_buffer.append('          <th class="px-3 py-2 w-24 border-r border-line/40">Tanggal</th>')
+            html_buffer.append('          <th class="px-3 py-2 w-28 border-r border-line/40">No. Ref</th>')
+            html_buffer.append('          <th class="px-3 py-2 border-r border-line/40">Deskripsi / Keterangan</th>')
+            html_buffer.append('          <th class="px-3 py-2 text-right border-r border-line/40">Debit (IDR)</th>')
+            html_buffer.append('          <th class="px-3 py-2 text-right border-r border-line/40">Credit (IDR)</th>')
+            html_buffer.append('          <th class="px-3 py-2 text-right">Saldo (IDR)</th>')
+            html_buffer.append('        </tr>')
+            html_buffer.append('      </thead>')
+            html_buffer.append('      <tbody class="divide-y divide-line/40 text-ink">')
 
-            row_idx = 0
+            # Algoritma Pengelompokan Baris Transaksi (Grouping Multiline Records)
+            gl_records: list[dict[str, Any]] = []
+            
             for p in extracted_pages:
-                for line in p["lines"]:
-                    # Abaikan header/footer berulang
-                    if any(ign in line for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe"]):
+                page_num = p["page"]
+                lines = p["lines"]
+                
+                for line in lines:
+                    line_str = line.strip()
+                    if not line_str:
                         continue
-                    
-                    row_idx += 1
-                    bg_cls = "bg-panel" if row_idx % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
-                    
-                    # Parsing Regex Cerdas Baris Transaksi Buku Besar
-                    # Format tipikal: DD/MM/YYYY [REF_NO] [Deskripsi...] [Debit/Credit] [Saldo]
-                    parts = line.split()
-                    tgl = "-"
-                    ref = "-"
-                    deskripsi = line
-                    debit = "-"
-                    kredit = "-"
-                    saldo = "-"
+                    # Abaikan header/footer sistem berulang
+                    if any(ign in line_str for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe"]):
+                        continue
 
-                    if len(parts) >= 3 and "/" in parts[0] and len(parts[0]) == 10:
+                    parts = line_str.split()
+                    is_new_tx = len(parts) >= 2 and "/" in parts[0] and len(parts[0]) == 10 and parts[0][:2].isdigit()
+
+                    if is_new_tx:
+                        # Buat record baru
                         tgl = parts[0]
-                        ref = parts[1] if ("-" in parts[1] or parts[1].isalnum()) else "-"
-                        
-                        # Ambil angka-angka nominal di ujung baris
-                        num_parts = [p for p in parts[2:] if p.replace(".", "").replace(",", "").replace("-", "").replace("(", "").replace(")", "").isdigit()]
-                        if len(num_parts) >= 2:
-                            saldo = num_parts[-1]
-                            nominal = num_parts[-2]
-                            # Tentukan Debit vs Kredit dari kata kunci Deskripsi atau struktur angka
-                            if any(k in line.upper() for k in ["PEMBELIAN", "PUR-", "EXP-", "PELUNASAN", "TRANSAKSI"]):
-                                kredit = nominal
-                            else:
-                                debit = nominal
-                            
-                            # Deskripsi adalah sisa kata di tengah
-                            desc_words = [w for w in parts[2:] if w not in num_parts]
-                            deskripsi = " ".join(desc_words) if desc_words else line
-                        elif len(num_parts) == 1:
-                            saldo = num_parts[0]
-                            desc_words = [w for w in parts[2:-1]]
-                            deskripsi = " ".join(desc_words) if desc_words else line
+                        ref = parts[1] if (len(parts) > 1 and ("-" in parts[1] or parts[1].isalnum()) and not parts[1].replace(".", "").replace(",", "").isdigit()) else "-"
+                        remains = parts[2:] if ref != "-" else parts[1:]
 
-                    html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
-                    html_buffer.append(f'        <td class="px-3 py-2 text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(tgl)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap">{html.escape(ref)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px]">{html.escape(deskripsi)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right text-emerald-600 font-semibold">{html.escape(debit)}</td>')
-                    html_buffer.append(f'        <td class="px-3 py-2 font-mono text-[11px] text-right text-amber-600 font-semibold">{html.escape(kredit)}</td>')
-                    html_buffer.append('      </tr>')
-            html_buffer.append('    </tbody>')
-            html_buffer.append('  </table>')
+                        gl_records.append({
+                            "page": page_num,
+                            "tgl": tgl,
+                            "ref": ref,
+                            "tokens": remains,
+                            "raw_lines": [line_str],
+                        })
+                    else:
+                        # Sambungkan ke record sebelumnya jika baris lanjutan
+                        if gl_records:
+                            gl_records[-1]["tokens"].extend(parts)
+                            gl_records[-1]["raw_lines"].append(line_str)
+                        else:
+                            gl_records.append({
+                                "page": page_num,
+                                "tgl": "-",
+                                "ref": "-",
+                                "tokens": parts,
+                                "raw_lines": [line_str],
+                            })
+
+            # Proses Pemisahan Kolom (Debit, Kredit, Saldo, Deskripsi) dari gabungan tokens
+            for idx, rec in enumerate(gl_records):
+                bg_cls = "bg-panel" if idx % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
+                tokens = rec["tokens"]
+                
+                tgl = rec["tgl"]
+                ref = rec["ref"]
+                debit = "-"
+                kredit = "-"
+                saldo = "-"
+                desc = " ".join(tokens)
+
+                # Cari token angka nominal di bagian akhir
+                num_tokens = []
+                non_num_tokens = []
+                for tok in tokens:
+                    clean_tok = tok.replace(".", "").replace(",", "").replace("-", "").replace("(", "").replace(")", "")
+                    if clean_tok.isdigit() and len(tok) >= 3:
+                        num_tokens.append(tok)
+                    else:
+                        non_num_tokens.append(tok)
+
+                if num_tokens:
+                    if len(num_tokens) >= 3:
+                        saldo = num_tokens[-1]
+                        kredit = num_tokens[-2]
+                        debit = num_tokens[-3]
+                    elif len(num_tokens) == 2:
+                        saldo = num_tokens[-1]
+                        nom = num_tokens[-2]
+                        if any(k in desc.upper() for k in ["PEMBELIAN", "PUR-", "EXP-", "PELUNASAN", "UTANG"]):
+                            kredit = nom
+                        else:
+                            debit = nom
+                    elif len(num_tokens) == 1:
+                        saldo = num_tokens[0]
+
+                    desc = " ".join(non_num_tokens)
+
+                html_buffer.append(f'        <tr class="{bg_cls} transition-colors">')
+                html_buffer.append(f'          <td class="px-3 py-2 text-muted-foreground font-mono text-[11px] border-r border-line/30">{rec["page"]}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30">{html.escape(tgl)}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap border-r border-line/30">{html.escape(ref)}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30">{html.escape(desc)}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-emerald-600 font-semibold border-r border-line/30">{html.escape(debit)}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-amber-600 font-semibold border-r border-line/30">{html.escape(kredit)}</td>')
+                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-ink font-semibold">{html.escape(saldo)}</td>')
+                html_buffer.append('        </tr>')
+
+            html_buffer.append('      </tbody>')
+            html_buffer.append('    </table>')
+            html_buffer.append('  </div>')
         else:
-            # Render Tabel Umum Teks Baris PDF
-            html_buffer.append('  <table class="w-full text-left text-xs border-collapse">')
-            html_buffer.append('    <thead>')
-            html_buffer.append('      <tr class="bg-muted/80 text-ink font-semibold border-b border-line">')
-            html_buffer.append('        <th class="px-3.5 py-2.5 w-16">Hal.</th>')
-            html_buffer.append('        <th class="px-3.5 py-2.5">Ekstraksi Baris / Teks Terbaca</th>')
-            html_buffer.append('      </tr>')
-            html_buffer.append('    </thead>')
-            html_buffer.append('    <tbody class="divide-y divide-line/40 text-ink">')
+            # Render Tabel Umum Teks Baris PDF dengan scrollbar & border halus
+            html_buffer.append('  <div class="max-h-80 overflow-auto border-t border-line/40">')
+            html_buffer.append('    <table class="w-full text-left text-xs border-collapse whitespace-nowrap">')
+            html_buffer.append('      <thead>')
+            html_buffer.append('        <tr class="sticky top-0 z-10 bg-muted/90 text-ink font-semibold border-b border-line shadow-xs">')
+            html_buffer.append('          <th class="px-3.5 py-2.5 w-16 border-r border-line/40">Hal.</th>')
+            html_buffer.append('          <th class="px-3.5 py-2.5">Ekstraksi Baris / Teks Terbaca</th>')
+            html_buffer.append('        </tr>')
+            html_buffer.append('      </thead>')
+            html_buffer.append('      <tbody class="divide-y divide-line/40 text-ink">')
             row_counter = 0
             for p in extracted_pages:
                 for line in p["lines"][:12]:
                     row_counter += 1
                     bg_cls = "bg-panel" if row_counter % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
-                    html_buffer.append(f'      <tr class="{bg_cls} transition-colors">')
-                    html_buffer.append(f'        <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px]">{p["page"]}</td>')
-                    html_buffer.append(f'        <td class="px-3.5 py-2 font-mono text-[11px]">{html.escape(line)}</td>')
-                    html_buffer.append('      </tr>')
-            html_buffer.append('    </tbody>')
-            html_buffer.append('  </table>')
+                    html_buffer.append(f'        <tr class="{bg_cls} transition-colors">')
+                    html_buffer.append(f'          <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px] border-r border-line/30">{p["page"]}</td>')
+                    html_buffer.append(f'          <td class="px-3.5 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(line)}</td>')
+                    html_buffer.append('        </tr>')
+            html_buffer.append('      </tbody>')
+            html_buffer.append('    </table>')
+            html_buffer.append('  </div>')
         if total_pages > max_pages:
             html_buffer.append(f'  <div class="px-4 py-1.5 text-[10px] text-muted-foreground bg-muted/30 border-t border-line text-center">Menampilkan preview {max_pages} halaman pertama dari total {total_pages} halaman PDF</div>')
         html_buffer.append('</div>')

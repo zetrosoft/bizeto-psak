@@ -1172,6 +1172,30 @@ function ChatBubble(props: {
 }
 
 function MarkdownContent({ text }: { text: string }) {
+  // Jika teks pesan mengandung elemen HTML murni (seperti <div class= atau <table), pisahkan bagian HTML dan Markdown
+  const htmlBlockRegex = /(<div[\s\S]*?<\/div>|<table[\s\S]*?<\/table>)/gi;
+  const parts = text.split(htmlBlockRegex);
+
+  return (
+    <div className="space-y-2">
+      {parts.map((part, idx) => {
+        if (!part.trim()) return null;
+        if (part.trim().startsWith("<div") || part.trim().startsWith("<table")) {
+          return (
+            <div
+              key={idx}
+              dangerouslySetInnerHTML={{ __html: part }}
+              className="my-2"
+            />
+          );
+        }
+        return <MarkdownSubBlocks key={idx} text={part} />;
+      })}
+    </div>
+  );
+}
+
+function MarkdownSubBlocks({ text }: { text: string }) {
   const blocks = text.split(/```(\w+)?\n?([\s\S]*?)```/g);
   const nodes = [];
 
@@ -1525,7 +1549,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00043
+          v2.0.0.00044
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

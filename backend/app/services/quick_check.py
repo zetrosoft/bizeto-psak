@@ -5,6 +5,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from app.services.excel_parser import parse_excel_native
+from app.services.pdf_parser import parse_pdf_native
 from app.services.ledger_parser import parse_csv_ledger
 from app.services.mcp_vision_client import call_mcp_ocr_receipt
 
@@ -29,44 +31,28 @@ def quick_check_document(row: Any) -> dict[str, Any]:
     header = path.read_bytes()[:32]
     metadata["magic_header_hex"] = header.hex(" ")[:96]
 
-    if document_type == "general_ledger" and filename.lower().endswith(".csv"):
-        parsed = parse_csv_ledger(path, limit=5)
-        metadata.update({
-            "columns": parsed.get("columns", []),
-            "sample_rows": parsed.get("rows", []),
-            "row_count_sample": parsed.get("row_count", 0),
-            "debit_total_sample": parsed.get("debit_total", 0),
-            "credit_total_sample": parsed.get("credit_total", 0),
-            "issues": parsed.get("issues", []),
-        })
-        markdown = _csv_markdown(filename, metadata)
-        return _response(row, markdown, metadata, provider="local_csv_header")
+    # Jalur 2: Excel & CSV
+    if filename.lower().endswith((".xlsx", ".xls", ".csv")):
+        excel_res = parse_excel_native(path, max_rows=15)
+        metadata.update(excel_res)
+        html_table = excel_res.get("html_table", "")
+        return _response(row, html_table, metadata, provider="native_excel_parser")
 
-    if document_type == "general_ledger" and filename.lower().endswith((".xlsx", ".xls")):
-        workbook_info = _inspect_xlsx(path)
-        metadata.update(workbook_info)
-        markdown = _base_markdown(filename, document_type, metadata, [
-            "Workbook dikenali dari header ZIP/XLSX.",
-            f"Sheet terdeteksi: {', '.join(workbook_info.get('sheet_candidates', [])[:5]) or 'belum terbaca'}",
-            "Parser detail XLSX akan dijalankan pada proses lanjut.",
-        ])
-        return _response(row, markdown, metadata, provider="local_xlsx_header")
+    # Jalur 3: PDF
+    if document_type == "pdf_document" or filename.lower().endswith(".pdf"):
+        pdf_res = parse_pdf_native(path, max_pages=5)
+        metadata.update(pdf_res)
+        html_table = pdf_res.get("html_table", "")
+        return _response(row, html_table, metadata, provider="native_pdf_parser")
 
-    if document_type == "image_evidence":
+    # Jalur 1: OCR Gambar
+    if document_type == "image_evidence" or mime_type.startswith("image/"):
         image_bytes = path.read_bytes()
         ocr = call_mcp_ocr_receipt(image_bytes, mime_type if mime_type.startswith("image/") else "image/jpeg")
         extracted_text = ocr.get("text", "")
         metadata["ocr_preview"] = _safe_json_or_text(extracted_text)
         markdown = _ocr_markdown(filename, metadata, extracted_text, bool(ocr.get("fallback")))
         return _response(row, markdown, metadata, provider=str(ocr.get("provider")), fallback=bool(ocr.get("fallback")), extracted_text=extracted_text)
-
-    if document_type == "pdf_document":
-        markdown = _base_markdown(filename, document_type, metadata, [
-            "PDF dikenali dari ekstensi/MIME.",
-            "Tahap quick-check saat ini belum melakukan render halaman PDF.",
-            "Pada proses lanjut, PDF text-based akan diekstrak teksnya; PDF scan akan masuk jalur Vision.",
-        ])
-        return _response(row, markdown, metadata, provider="local_pdf_header")
 
     if document_type == "text_document":
         text = path.read_text(encoding="utf-8", errors="replace")[:1600]

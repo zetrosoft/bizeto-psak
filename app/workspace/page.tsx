@@ -469,6 +469,13 @@ export default function WorkspacePage() {
   }
 
   async function uploadAndProcessPendingAttachment(file: File, userText: string): Promise<WorkspaceSource | null> {
+    // SOP MUTLAK 2: Cek Entitas Aktif
+    if (!selectedEntity) {
+      setApiError("Silakan pilih entitas/klien aktif terlebih dahulu dari dropdown di atas sebelum mengunggah dokumen.");
+      pushMessage("assistant", "⚠️ **Entitas Belum Dipilih**\n\nMohon pilih entitas aktif terlebih dahulu di dropdown atas, atau ketik nama entitas baru di kolom chat (contoh: `client : PT Maju Bersama`) agar pemrosesan dokumen ini masuk ke pembukuan entitas yang tepat.");
+      return null;
+    }
+
     const isImage = file.type.startsWith("image/");
     const localSource: WorkspaceSource = {
       id: crypto.randomUUID(),
@@ -494,17 +501,17 @@ export default function WorkspacePage() {
       localSource.status = "processing";
       addSource(localSource);
 
+      // SOP MUTLAK 3 & 4: Manual Native Parser (0% AI di tahap awal) -> QuickCheck Response berisi HTML Table Murni
       const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${localSource.document?.id}/quick-check`, {});
       localSource.detail = `${quickCheck.document_type} · ${quickCheck.provider}`;
       localSource.status = "quick_checked";
-      localSource.ocrDraftMarkdown = quickCheck.document_type === "image_evidence" ? quickCheck.markdown : undefined;
+      localSource.ocrDraftMarkdown = quickCheck.markdown;
       setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
 
-      // Kirim hasil ekstrak file ke AI MCP untuk dianalisis dan dijawab secara organis tanpa memberikan pilihan teknis kaku
+      // Tampilkan langsung di Bubble Chat HTML Table Murni & Informasi awal untuk Entitas terpilih
       setPhase("source_review");
-      const promptToAi = `Saya baru saja mengunggah dokumen/struk "${file.name}" (Jenis: ${quickCheck.document_type}). Berikut hasil pembacaan data awal:\n\n${quickCheck.markdown}\n\nInstruksi Tambahan Pengguna: ${userText || "Mohon lakukan analisis akuntansi PSAK sesuai data di atas secara proaktif."}`;
-      const aiReply = await askAiChat(promptToAi);
-      pushMessage("assistant", aiReply, localSource.id);
+      const initialMessage = `Berikut adalah hasil ekstraksi awal untuk entitas **${selectedEntity}**:\n\n${quickCheck.markdown}\n\n${userText ? `**Catatan Pengguna:** ${userText}` : ""}`;
+      pushMessage("assistant", initialMessage, localSource.id);
 
       return localSource;
     } catch (error) {

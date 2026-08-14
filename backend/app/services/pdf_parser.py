@@ -101,8 +101,11 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                     line_str = line.strip()
                     if not line_str:
                         continue
-                    # Abaikan header/footer sistem berulang
-                    if any(ign in line_str for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe"]):
+                    # Abaikan header/footer sistem berulang serta nama akun (Account Name / Kode Akun)
+                    if any(ign in line_str for ign in ["TOKO SEMBAKO", "GENERAL LEDGER", "Period", "dalam IDR", "Account Name", "Tanggal No. Ref", "Report automatically generated", "Jl. Sandang Lawe", "Account:"]):
+                        continue
+                    # Abaikan baris yang diawali dengan kata "Account" atau memuat nama akun di awal
+                    if line_str.upper().startswith("ACCOUNT") or "ACCOUNT NAME" in line_str.upper():
                         continue
 
                     parts = line_str.split()
@@ -147,6 +150,9 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                 saldo = "-"
                 desc = " ".join(tokens)
 
+                # Filter lagi kata 'Account Name' jika terselip dalam deskripsi
+                desc = desc.replace("Account Name", "").replace("Account:", "").strip()
+
                 # Cari token angka nominal di bagian akhir
                 num_tokens = []
                 non_num_tokens = []
@@ -172,16 +178,16 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                     elif len(num_tokens) == 1:
                         saldo = num_tokens[0]
 
-                    desc = " ".join(non_num_tokens)
+                    desc = " ".join(non_num_tokens).replace("Account Name", "").strip()
 
-                html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40">')
+                html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40 group hover:bg-gold/10">')
                 html_buffer.append(f'          <td class="px-3 py-2 text-muted-foreground font-mono text-[11px] border-r border-line/30">{rec["page"]}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30">{html.escape(tgl)}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap border-r border-line/30">{html.escape(ref)}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30">{html.escape(desc)}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-emerald-600 font-semibold border-r border-line/30">{html.escape(debit)}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-amber-600 font-semibold border-r border-line/30">{html.escape(kredit)}</td>')
-                html_buffer.append(f'          <td class="px-3 py-2 font-mono text-[11px] text-right text-ink font-semibold">{html.escape(saldo)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(tgl)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] text-gold font-semibold whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(ref)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] whitespace-nowrap border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(desc)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] text-right text-emerald-600 font-semibold border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(debit)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] text-right text-amber-600 font-semibold border-r border-line/30 focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(kredit)}</td>')
+                html_buffer.append(f'          <td contenteditable="true" class="px-3 py-2 font-mono text-[11px] text-right text-ink font-semibold focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(saldo)}</td>')
                 html_buffer.append('        </tr>')
 
             html_buffer.append('      </tbody>')
@@ -205,18 +211,17 @@ def parse_pdf_native(file_path: Path, max_pages: int = 5) -> dict[str, Any]:
                     bg_cls = "bg-panel" if row_counter % 2 == 0 else "bg-muted/20 hover:bg-gold/5"
                     html_buffer.append(f'        <tr class="{bg_cls} transition-colors border-b border-line/40">')
                     html_buffer.append(f'          <td class="px-3.5 py-2 whitespace-nowrap text-muted-foreground font-mono text-[11px] border-r border-line/30">{p["page"]}</td>')
-                    html_buffer.append(f'          <td class="px-3.5 py-2 font-mono text-[11px] whitespace-nowrap">{html.escape(line)}</td>')
+                    html_buffer.append(f'          <td contenteditable="true" class="px-3.5 py-2 font-mono text-[11px] whitespace-nowrap focus:bg-canvas focus:ring-1 focus:ring-gold outline-none rounded">{html.escape(line)}</td>')
                     html_buffer.append('        </tr>')
             html_buffer.append('      </tbody>')
             html_buffer.append('    </table>')
             html_buffer.append('  </div>')
         
-        # Action Bar (Tombol Konfirmasi & Edit Draf)
+        # Action Bar (Informasi Draf & Tombol Konfirmasi Posting)
         html_buffer.append('  <div class="p-3 bg-muted/30 border-t border-line flex items-center justify-between gap-3">')
-        html_buffer.append('    <span class="text-[11px] text-muted-foreground font-medium">Status: <strong class="text-amber-500 font-bold">DRAFT</strong> (Belum Diposting)</span>')
+        html_buffer.append('    <span class="text-[11px] text-muted-foreground font-medium">💡 Status: <strong class="text-amber-500 font-bold">DRAFT</strong> (Klik sel untuk <em>Inline Edit</em> instan)</span>')
         html_buffer.append('    <div class="flex items-center gap-2">')
-        html_buffer.append('      <button onclick="window.dispatchEvent(new CustomEvent(\'bizeto:edit-draft\'))" class="px-3.5 py-1.5 rounded-lg border border-line bg-panel text-xs font-bold text-ink hover:bg-muted transition">✏️ Edit Draf</button>')
-        html_buffer.append('      <button onclick="window.dispatchEvent(new CustomEvent(\'bizeto:confirm-post\'))" class="px-4 py-1.5 rounded-lg bg-teal text-xs font-bold text-white shadow-md hover:bg-teal/90 transition">✓ Konfirmasi Posting</button>')
+        html_buffer.append('      <button onclick="window.dispatchEvent(new CustomEvent(\'bizeto:confirm-post\'))" class="px-4 py-1.5 rounded-lg bg-teal text-xs font-bold text-white shadow-md hover:bg-teal/90 transition">✓ Konfirmasi & Simpan Posting</button>')
         html_buffer.append('    </div>')
         html_buffer.append('  </div>')
         html_buffer.append('</div>')

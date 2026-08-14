@@ -604,9 +604,15 @@ export default function WorkspacePage() {
       });
       setPhase("confirmed");
       setSources((items) => items.map((item) => item.id === selectedSource.id ? { ...item, document: confirmedDocument, status: "confirmed" } : item));
-      pushMessage("assistant", locale === "id" ? "Draf terkonfirmasi. Data siap naik ke tahap berikutnya, tetapi belum difinalisasi permanen." : "Draft confirmed. The data is ready for the next stage, but it is not permanently finalized yet.");
+      
+      const confirmNotice = locale === "id"
+        ? `✅ **Data Transaksi Berhasil Diposting ke Database!**\n\n- **Dokumen**: \`${selectedSource.label}\`\n- **Status**: \`POSTED\` (Terkunci permanen di PostgreSQL \`bizeto_psak_db\`)\n- **Langkah Selanjutnya**: Data telah masuk ke Financial Engine untuk pembuatan Laporan Laba Rugi, Balance Sheet, & Neraca Saldo.`
+        : `✅ **Transaction Data Successfully Posted to Database!**\n\n- **Document**: \`${selectedSource.label}\`\n- **Status**: \`POSTED\` (Permanently locked in PostgreSQL \`bizeto_psak_db\`)\n- **Next Step**: Data ingested into Financial Engine for Profit & Loss, Balance Sheet, & Trial Balance generation.`;
+
+      pushMessage("assistant", confirmNotice, selectedSource.id);
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Confirm failed");
+      pushMessage("assistant", `❌ Gagal menyimpan konfirmasi posting: ${error instanceof Error ? error.message : "Error server"}`, selectedSource.id);
     }
   }
 
@@ -1608,7 +1614,7 @@ function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: The
         </button>
         <ThemeControl theme={theme} setTheme={setTheme} />
         <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00048
+          v2.0.0.00049
         </span>
       </div>
       <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">

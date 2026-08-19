@@ -104,7 +104,7 @@ export default function GeminiCanvasWorkspace() {
         {
           id: "m2",
           sender: "ai",
-          text: "Saya telah mengekstrak seluruh data dari PDF laporan General Ledger Toko Sembako Kusuma dan menyajikannya dalam aplikasi spreadsheet/Excel interaktif.\n\nDalam aplikasi ini, setiap cell dapat diedit secara langsung, dilengkapi dengan fitur perhitungan saldo otomatis, formula bar, pengurutan/pencarian data, serta opsi ekspor ke file Excel (.xlsx), CSV, atau Print PDF.\n\nBerikut adalah aplikasi spreadsheet interaktif untuk data laporan keuangan tersebut:",
+          text: "Berkas laporan General Ledger Toko Sembako Kusuma telah berhasil dirapiikan dan ditelaah dengan presisi. Seluruh entri kini telah kami sajikan ke dalam modul spreadsheet interaktif.\n\nAnda dapat meninjau serta menyesuaikan setiap sel transaksi secara langsung. Lembar kerja ini juga dilengkapi kalkulasi otomatis, formula bar, pencarian cepat, serta opsi ekspor ke format Excel, CSV, atau PDF.\n\nBerikut adalah lembar kerja interaktif yang siap Anda periksa:",
           hasCanvas: true,
           canvasTitle: "General Ledger Toko Sembako Kusuma",
           feedback: null,
@@ -316,8 +316,8 @@ export default function GeminiCanvasWorkspace() {
             id: `m-${Date.now()}-2`,
             sender: "ai",
             text: isWorksheetRequest
-              ? "Saya telah mengekstrak seluruh data dari PDF laporan General Ledger Toko Sembako Kusuma dan menyajikannya dalam aplikasi spreadsheet/Excel interaktif.\n\nDalam aplikasi ini, setiap cell dapat diedit secara langsung, dilengkapi dengan fitur perhitungan saldo otomatis, formula bar, pengurutan/pencarian data, serta opsi ekspor ke file Excel (.xlsx), CSV, atau Print PDF."
-              : `Terima kasih. Berdasarkan registri entitas ${activeEntity}, berikut adalah analisis akuntansi PSAK untuk transaksi Anda.`,
+              ? "Berkas transaksi Anda telah berhasil kami telaah dan strukturkan ke dalam modul lembar kerja interaktif.\n\nSetiap sel dapat Anda sesuaikan secara rinci sebelum diposting ke buku besar final. Silakan periksa lembar kerja di bawah ini:"
+              : `Terima kasih atas instruksi Anda. Berdasarkan registri akuntansi entitas ${activeEntity}, berikut adalah penelaahan dan penyesuaian PSAK yang kami rekomendasikan untuk transaksi Anda.`,
             hasCanvas: isWorksheetRequest,
             canvasTitle: isWorksheetRequest ? "General Ledger Toko Sembako Kusuma" : undefined,
           },

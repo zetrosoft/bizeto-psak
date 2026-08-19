@@ -1,1775 +1,515 @@
 "use client";
 
-import Link from "next/link";
+import React, { useState, useRef } from "react";
 import {
-  ArrowLeft,
-  ArrowUp,
-  BadgeCheck,
-  BookOpen,
-  Check,
-  ChevronDown,
-  CircleAlert,
-  ClipboardList,
-  Copy,
-  FileSpreadsheet,
-  Gauge,
-  Grid2X2,
-  History,
-  Languages,
-  Laptop,
-  Mic2,
-  Moon,
-  PanelRight,
-  Plus,
-  RefreshCw,
-  RotateCw,
-  Settings,
   Sparkles,
+  Paperclip,
+  Mic,
+  Send,
+  Building2,
+  Calendar,
+  ChevronDown,
+  CheckCircle2,
   Sun,
-  ThumbsDown,
-  ThumbsUp,
-  Upload,
+  Moon,
+  Bot,
+  ShieldCheck,
+  Info,
+  Printer,
+  Menu,
   X,
-  ZoomIn,
-  type LucideIcon,
+  Globe,
 } from "lucide-react";
-import { ChangeEvent, RefObject, useEffect, useMemo, useRef, useState } from "react";
 
-type Locale = "en" | "id";
-type Theme = "system" | "light" | "dark";
-type SourceKind = "file" | "url";
-type WorkspacePhase = "idle" | "discussion" | "source_review" | "processing" | "review_required" | "confirmed" | "failed";
-type MessageRole = "user" | "assistant";
+type ViewMode = "chat" | "report_pnl" | "report_balance" | "report_trial";
+type StatusType = "DRAFT" | "POSTED" | "CONFIRMED";
 
-const API_BASE = process.env.NEXT_PUBLIC_BIZETO_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
-
-type BackendDocument = {
+interface TransactionRow {
   id: string;
-  source_type: string;
-  source_label: string;
-  filename?: string | null;
-  size_bytes?: number;
-  document_type: string;
-  status: string;
-};
+  date: string;
+  description: string;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  status: StatusType;
+}
 
-type BackendResume = {
-  document_id: string;
-  status: string;
-  document_type: string;
-  summary: string;
-  confidence: number;
-  row_count: number;
-  debit_total: number;
-  credit_total: number;
-  issues: Array<Record<string, unknown>>;
-  journal_candidates: Array<Record<string, unknown>>;
-  next_action: string;
-};
+export default function OmniAgentWorkspace() {
+  const [viewMode, setViewMode] = useState<ViewMode>("chat");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [inputPrompt, setInputPrompt] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [activeEntity, setActiveEntity] = useState("PT Sumber Makmur");
+  const [activePeriod, setActivePeriod] = useState("Juli 2026");
 
-type QuickCheckResponse = {
-  document_id: string;
-  document_type: string;
-  source_label: string;
-  markdown: string;
-  provider: string;
-  fallback: boolean;
-  extracted_text?: string | null;
-  metadata: Record<string, unknown>;
-};
+  // Sample data untuk simulasi laporan & transaksi konsisten (PostgreSQL Source)
+  const [transactions, setTransactions] = useState<TransactionRow[]>([
+    {
+      id: "TRX-001",
+      date: "19/08/2026",
+      description: "Pembelian Pertamax Operasional Kantor",
+      accountCode: "5-102",
+      accountName: "Beban Transportasi & Bbm",
+      debit: 250000,
+      credit: 0,
+      status: "DRAFT",
+    },
+    {
+      id: "TRX-002",
+      date: "18/08/2026",
+      description: "Pembayaran Tagihan Listrik PLN Juli",
+      accountCode: "5-105",
+      accountName: "Beban Listrik & Air",
+      debit: 1450000,
+      credit: 0,
+      status: "POSTED",
+    },
+  ]);
 
-type WorkspaceSource = {
-  id: string;
-  kind: SourceKind;
-  label: string;
-  detail: string;
-  previewUrl?: string;
-  previewMimeType?: string;
-  ocrDraftMarkdown?: string;
-  document?: BackendDocument;
-  status: "attached" | "quick_checked" | "processing" | "review_required" | "confirmed" | "failed";
-};
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-type ChatMessage = {
-  id: string;
-  role: MessageRole;
-  content: string;
-  sourceId?: string;
-  attachment?: {
-    filename: string;
-    previewUrl?: string;
-    sizeBytes: number;
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setIsUploading(true);
+      setTimeout(() => {
+        setIsUploading(false);
+        setViewMode("chat");
+        const newTrx: TransactionRow = {
+          id: `TRX-00${transactions.length + 1}`,
+          date: "19/08/2026",
+          description: `Ekstraksi: ${e.target.files?.[0].name}`,
+          accountCode: "5-201",
+          accountName: "Beban Operasional Lain-lain",
+          debit: 500000,
+          credit: 0,
+          status: "DRAFT",
+        };
+        setTransactions([newTrx, ...transactions]);
+      }, 1200);
+    }
   };
-  actions?: "confirm_process" | "select_entity";
-  feedback?: "up" | "down";
-  copied?: boolean;
-};
 
-type ChatApiResponse = {
-  response: string;
-  provider: string;
-  fallback: boolean;
-};
+  const handleSendPrompt = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputPrompt.trim()) return;
 
-const copy = {
-  en: {
-    workspace: "Workspace",
-    entity: "No entity selected",
-    period: "Open period",
-    title: "How can I assist your accounting today?",
-    subtitle: "Enterprise PSAK Copilot for real-time ledger analysis and audit-ready bookkeeping.",
-    placeholder: "Ask an accounting question, attach evidence, or type 'client: Name'…",
-    aiName: "Senior Accountant AI",
-    empty: "Start with a query, document, or URL.",
-    emptyHint: "Ask questions, upload financial evidence, or paste a link to get started.",
-    sources: "Sources",
-    noSources: "No sources yet",
-    processLog: "Process log",
-    noProcess: "No process started",
-    inspector: "Inspector",
-    selectedEvidence: "Selected evidence",
-    noEvidence: "No evidence selected",
-    quickCheck: "Quick check",
-    plan: "Process plan",
-    confirmProcess: "Confirm process",
-    continueProcess: "Continue process",
-    processing: "Processing…",
-    preview: "Preview",
-    confirmResult: "Confirm result",
-    confirmed: "Confirmed",
-    reset: "New session",
-    explore: "Explore",
-    process: "Process",
-    manage: "Manage",
-    playground: "Playground",
-    history: "History",
-    newWorkspace: "New workspace",
-    myWorkspaces: "My workspaces",
-    templates: "Templates",
-    entities: "Entities",
-    documentation: "Documentation",
-    uploadFailed: "Upload failed. The file is kept only in this browser session.",
-    uploadReading: "Give me a moment—I’m reading this file and pulling out the important details. Nothing is posted to accounting yet.",
-    ocrEditor: "OCR correction draft",
-    ocrEditorHint: "Edit the markdown table if the OCR result needs correction before continuing.",
-    rerunOcr: "Re-OCR",
-    discussionPrefix: "As a discussion, here is my take:",
-    inputModes: {
-      upload: "Upload file",
-      url: "Paste URL",
-    },
-  },
-  id: {
-    workspace: "Workspace",
-    entity: "Pilih Entitas",
-    period: "Periode Terbuka",
-    title: "Ada yang bisa saya bantu terkait akuntansi hari ini?",
-    subtitle: "Copilot PSAK Enterprise untuk analisis jurnal dan pembukuan siap audit.",
-    placeholder: "Tanyakan analisis PSAK, lampirkan bukti keuangan, atau ketik 'client : Nama Klien'…",
-    aiName: "Senior Akuntan AI",
-    empty: "Mulai pertanyaan, lampiran dokumen, atau URL.",
-    emptyHint: "Tanyakan seputar akuntansi atau lampirkan berkas keuangan untuk memulai.",
-    sources: "Sumber",
-    noSources: "Belum ada sumber",
-    processLog: "Log proses",
-    noProcess: "Belum ada proses",
-    inspector: "Inspector",
-    selectedEvidence: "Bukti terpilih",
-    noEvidence: "Belum ada bukti terpilih",
-    quickCheck: "Cek cepat",
-    plan: "Rencana proses",
-    confirmProcess: "Konfirmasi proses",
-    continueProcess: "Proses lanjut",
-    processing: "Memproses…",
-    preview: "Preview",
-    confirmResult: "Konfirmasi hasil",
-    confirmed: "Terkonfirmasi",
-    reset: "Sesi baru",
-    explore: "Explore",
-    process: "Process",
-    manage: "Manage",
-    playground: "Playground",
-    history: "History",
-    newWorkspace: "Sesi baru",
-    myWorkspaces: "Workspace saya",
-    templates: "Template",
-    entities: "Entitas",
-    documentation: "Dokumentasi",
-    uploadFailed: "Upload gagal. File hanya tersimpan di sesi browser ini.",
-    uploadReading: "Sebentar ya, saya baca dulu file ini dan ambil bagian pentingnya. Belum ada data yang diposting ke akuntansi.",
-    ocrEditor: "Draf koreksi OCR",
-    ocrEditorHint: "Edit tabel markdown ini jika hasil OCR perlu dikoreksi sebelum lanjut.",
-    rerunOcr: "Re-OCR",
-    discussionPrefix: "Sebagai diskusi, pandangan saya:",
-    inputModes: {
-      upload: "Upload file",
-      url: "Tempel URL",
-    },
-  },
-} as const;
-
-type WorkspaceCopy = (typeof copy)[keyof typeof copy];
-
-export default function WorkspacePage() {
-  const [locale, setLocaleState] = useState<Locale>("en");
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [inspector, setInspector] = useState(true);
-  const [phase, setPhase] = useState<WorkspacePhase>("idle");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sources, setSources] = useState<WorkspaceSource[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [resume, setResume] = useState<BackendResume | null>(null);
-  const [pendingAttachment, setPendingAttachment] = useState<{
-    file: File;
-    previewUrl?: string;
-  } | null>(null);
-  const [chatDraft, setChatDraft] = useState("");
-  const [attachOpen, setAttachOpen] = useState(false);
-  const [isAiThinking, setIsAiThinking] = useState(false);
-  const [apiError, setApiError] = useState("");
-  const chatRef = useRef<HTMLTextAreaElement | null>(null);
-  const messageEndRef = useRef<HTMLDivElement | null>(null);
-  const t = copy[locale];
-
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isAiThinking]);
-
-  const selectedSource = useMemo(
-    () => sources.find((source) => source.id === selectedSourceId) ?? sources[0] ?? null,
-    [selectedSourceId, sources],
-  );
-  const hasSource = sources.length > 0;
-  const showInspector = hasSource && inspector;
-  const startMode = messages.length === 0 && !hasSource;
-
-  const [username, setUsername] = useState("default_user");
-  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
-  const [entities, setEntities] = useState<Array<{ id: string; name: string }>>([]);
-  const [newEntityInput, setNewEntityInput] = useState("");
-
-  useEffect(() => {
-    // Instant client-side cache dari LocalStorage agar UX bebas flicker saat refresh
-    const cachedEntity = localStorage.getItem("bizeto_active_entity");
-    if (cachedEntity) setSelectedEntity(cachedEntity);
-    void fetchSessionAndEntities();
-
-    // Event listener global untuk Tombol Aksi Konfirmasi Posting & Edit Draf di Bubble Chat Table
-    const handleConfirmPost = () => {
-      void confirmResult();
-    };
-    const handleEditDraft = () => {
-      updateChatDraft("Saya ingin merevisi/mengedit data draf berikut: ");
-      chatRef.current?.focus();
-    };
-
-    window.addEventListener("bizeto:confirm-post", handleConfirmPost);
-    window.addEventListener("bizeto:edit-draft", handleEditDraft);
-
-    return () => {
-      window.removeEventListener("bizeto:confirm-post", handleConfirmPost);
-      window.removeEventListener("bizeto:edit-draft", handleEditDraft);
-    };
-  }, [selectedSource]);
-
-  async function fetchSessionAndEntities() {
-    try {
-      const [entitiesRes, sessionRes, docsRes] = await Promise.all([
-        fetch("/api/entities"),
-        fetch(`/api/user-session/${username}`),
-        fetch("/api/documents"),
-      ]);
-      if (entitiesRes.ok) {
-        const data = await entitiesRes.json();
-        setEntities(data.entities || []);
-      }
-      if (sessionRes.ok) {
-        const sess = await sessionRes.json();
-        if (sess.active_entity_name) {
-          setSelectedEntity(sess.active_entity_name);
-          localStorage.setItem("bizeto_active_entity", sess.active_entity_name);
-        }
-        if (sess.locale) setLocaleState(sess.locale);
-        if (sess.theme) setThemeState(sess.theme);
-      }
-      if (docsRes.ok) {
-        const docs = await docsRes.json() as BackendDocument[];
-        if (docs && docs.length > 0) {
-          const loadedSources: WorkspaceSource[] = docs.map((doc) => ({
-            id: doc.id,
-            kind: doc.source_type === "url" ? "url" : "file",
-            label: doc.filename || doc.source_label,
-            detail: `${doc.document_type} · ${((doc.size_bytes || 0) / 1024).toFixed(1)} KB`,
-            status: (doc.status === "confirmed" ? "confirmed" : "attached") as WorkspaceSource["status"],
-            document: doc,
-          }));
-          setSources(loadedSources);
-          setSelectedSourceId(loadedSources[0].id);
-        }
-      }
-    } catch {
-      // quiet fallback
-    }
-  }
-
-  async function persistUserSession(entityName: string | null, newLocale?: Locale, newTheme?: Theme) {
-    if (entityName) {
-      localStorage.setItem("bizeto_active_entity", entityName);
-    }
-    try {
-      const entityObj = entities.find((e) => e.name === entityName);
-      await postJson("/api/user-session", {
-        username,
-        active_entity_id: entityObj?.id ?? null,
-        active_entity_name: entityName,
-        locale: newLocale ?? locale,
-        theme: newTheme ?? theme,
-      });
-    } catch {
-      // quiet fallback
-    }
-  }
-
-  const [pendingUserIntent, setPendingUserIntent] = useState<string | null>(null);
-
-  async function handleSelectEntity(entityName: string) {
-    setSelectedEntity(entityName);
-    void persistUserSession(entityName);
-    
-    // Jika ada intent pertanyaan pengguna sebelum memilih entitas:
-    if (pendingUserIntent) {
-      const intentToProcess = pendingUserIntent;
-      setPendingUserIntent(null);
-      setPhase(hasSource ? "source_review" : "discussion");
-      const aiReply = await askAiChat(intentToProcess, entityName);
-      pushMessage("assistant", aiReply);
+    const lower = inputPrompt.toLowerCase();
+    if (lower.includes("laba rugi") || lower.includes("pnl") || lower.includes("untung")) {
+      setViewMode("report_pnl");
+    } else if (lower.includes("neraca") || lower.includes("balance")) {
+      setViewMode("report_balance");
+    } else if (lower.includes("saldo") || lower.includes("trial")) {
+      setViewMode("report_trial");
     } else {
-      // Minta AI MCP menyusun respon organis sesuai konteks entitas baru tanpa kalimat bot kaku
-      setPhase("discussion");
-      const aiReply = await askAiChat(`Saya baru saja memilih/mengganti entitas aktif ke ${entityName}. Mari kita lanjutkan diskusi.`, entityName);
-      pushMessage("assistant", aiReply);
+      setViewMode("chat");
     }
-  }
+    setInputPrompt("");
+  };
 
-  async function handleAddEntityWithName(name: string) {
-    if (!name) return;
-    try {
-      const res = await postJson<{ entity: { name: string } }>("/api/entities", { name, username });
-      if (res.entity?.name) {
-        await fetchSessionAndEntities();
-        handleSelectEntity(res.entity.name);
-        setNewEntityInput("");
-      }
-    } catch {
-      handleSelectEntity(name);
-      setNewEntityInput("");
-    }
-  }
-
-  async function handleAddEntity() {
-    await handleAddEntityWithName(newEntityInput.trim());
-  }
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    root.classList.toggle("dark", theme === "dark" || (theme === "system" && prefersDark));
-  }, [theme]);
-
-  function setLocale(value: Locale) {
-    setLocaleState(value);
-    void persistUserSession(selectedEntity, value, theme);
-  }
-
-  function updateChatDraft(value: string) {
-    setChatDraft(value);
-    const input = chatRef.current;
-    if (!input) return;
-    input.style.height = "auto";
-    input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
-    input.style.overflowY = input.scrollHeight > 180 ? "auto" : "hidden";
-  }
-
-  async function askAiChat(text: string, overrideEntity?: string) {
-    setIsAiThinking(true);
-    try {
-      const response = await postJson<ChatApiResponse>("/api/chat", {
-        message: text,
-        locale,
-        entity_name: overrideEntity || selectedEntity,
-        has_source: hasSource,
-        source_summary: selectedSource ? `${selectedSource.label} · ${selectedSource.detail}` : null,
-        phase,
-        history: messages.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-      });
-      return response.response;
-    } catch (error) {
-      return locale === "id"
-        ? "Maaf, terjadi kendala saat menghubungkan ke MCP server. Silakan coba lagi."
-        : "Sorry, an error occurred while connecting to the MCP server. Please try again.";
-    } finally {
-      setIsAiThinking(false);
-    }
-  }
-
-  async function sendMessage() {
-    const text = chatDraft.trim();
-    const currentAttachment = pendingAttachment;
-
-    if (!text && !currentAttachment) return;
-
-    // LANGSUNG KOSONGKAN INPUT BAR & LAMPIRAN DRAFT
-    updateChatDraft("");
-    setPendingAttachment(null);
-
-    // Tampilkan pesan user secara natural & pasang thumbnail attachment jika ada
-    const userDisplayContent = text || (locale === "id" ? "Mohon analisis dokumen ini." : "Please analyze this document.");
-    const attachmentData = currentAttachment
-      ? {
-          filename: currentAttachment.file.name,
-          previewUrl: currentAttachment.previewUrl,
-          sizeBytes: currentAttachment.file.size,
-        }
-      : undefined;
-
-    pushMessage("user", userDisplayContent, undefined, undefined, attachmentData);
-
-    // Cek jika user menginput nama client baru diawali "client :" atau "client:"
-    if (text) {
-      const clientMatch = text.match(/^(?:client|klien|entitas)\s*:\s*(.+)$/i);
-      if (clientMatch) {
-        const newClientName = clientMatch[1].trim();
-        if (newClientName) {
-          setNewEntityInput(newClientName);
-          await handleAddEntityWithName(newClientName);
-          return;
-        }
-      }
-    }
-
-    // Aturan entitas berlaku ketat & bersih tanpa prompt kaku
-    if (!selectedEntity) {
-      setPendingUserIntent(userDisplayContent);
-      if (currentAttachment) {
-        setPendingAttachment(currentAttachment); // Simpan kembali attachment draft jika entitas belum dipilih
-      }
-      const promptMsg = locale === "id"
-        ? `Silakan pilih nama klien/entitas pada dropdown di atas atau ketik \`client : Nama Klien\` untuk melanjutkan.`
-        : `Please select an active client/entity from the dropdown above or type \`client : Client Name\` to continue.`;
-      pushMessage("assistant", promptMsg, undefined, "select_entity");
-      return;
-    }
-
-    // Jika ada lampiran pending, proses dokumen upload terlebih dahulu saat di-enter bersama intent
-    if (currentAttachment) {
-      await uploadAndProcessPendingAttachment(currentAttachment.file, text);
-      return;
-    }
-
-    const url = extractUrl(text);
-    const explicitProcess = isExplicitProcess(text);
-
-    if (url) {
-      const source = await createUrlSource(url);
-      addSource(source);
-      respondWithSourcePlan(source, text);
-      if (explicitProcess) await processSource(source);
-      return;
-    }
-
-    if (hasSource && explicitProcess && selectedSource) {
-      pushMessage("assistant", locale === "id" ? "Baik, instruksi prosesnya eksplisit. Saya mulai proses sumber terpilih." : "Understood. The processing instruction is explicit, so I will process the selected source.");
-      await processSource(selectedSource);
-      return;
-    }
-
-    setPhase(hasSource ? "source_review" : "discussion");
-    const aiReply = await askAiChat(text);
-    pushMessage("assistant", aiReply);
-  }
-
-  async function onFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Tutup dropdown menu (+) setelah file dipilih
-    setAttachOpen(false);
-    setApiError("");
-
-    const isImage = file.type.startsWith("image/");
-    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
-    
-    // Simpan sebagai draft lampiran (Gemini App style thumbnail)
-    setPendingAttachment({ file, previewUrl });
-    
-    // Reset file input value agar file yang sama bisa dipilih kembali jika perlu
-    event.target.value = "";
-  }
-
-  async function uploadAndProcessPendingAttachment(file: File, userText: string): Promise<WorkspaceSource | null> {
-    // SOP MUTLAK 2: Cek Entitas Aktif
-    if (!selectedEntity) {
-      setApiError("Silakan pilih entitas/klien aktif terlebih dahulu dari dropdown di atas sebelum mengunggah dokumen.");
-      pushMessage("assistant", "⚠️ **Entitas Belum Dipilih**\n\nMohon pilih entitas aktif terlebih dahulu di dropdown atas, atau ketik nama entitas baru di kolom chat (contoh: `client : PT Maju Bersama`) agar pemrosesan dokumen ini masuk ke pembukuan entitas yang tepat.");
-      return null;
-    }
-
-    const isImage = file.type.startsWith("image/");
-    const localSource: WorkspaceSource = {
-      id: crypto.randomUUID(),
-      kind: "file",
-      label: file.name,
-      detail: `${file.type || "unknown"} · ${formatBytes(file.size)}`,
-      previewUrl: isImage ? URL.createObjectURL(file) : undefined,
-      previewMimeType: isImage ? file.type : undefined,
-      status: "attached",
-    };
-
-    setIsAiThinking(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch(`${API_BASE}/api/documents/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) throw new Error(`Upload failed (${response.status})`);
-      localSource.document = await response.json();
-      localSource.detail = `${localSource.document?.document_type || "unknown"} · ${formatBytes(file.size)}`;
-      localSource.status = "processing";
-      addSource(localSource);
-
-      // SOP MUTLAK 3 & 4: Manual Native Parser (0% AI di tahap awal) -> QuickCheck Response berisi HTML Table Murni
-      const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${localSource.document?.id}/quick-check`, {});
-      localSource.detail = `${quickCheck.document_type} · ${quickCheck.provider}`;
-      localSource.status = "quick_checked";
-      localSource.ocrDraftMarkdown = quickCheck.markdown;
-      setSources((items) => items.map((item) => item.id === localSource.id ? { ...localSource } : item));
-
-      // Tampilkan langsung di Bubble Chat HTML Table Murni & Informasi awal untuk Entitas terpilih
-      setPhase("source_review");
-      const initialMessage = `Berikut adalah hasil ekstraksi awal untuk entitas **${selectedEntity}**:\n\n${quickCheck.markdown}\n\n${userText ? `**Catatan Pengguna:** ${userText}` : ""}`;
-      pushMessage("assistant", initialMessage, localSource.id);
-
-      return localSource;
-    } catch (error) {
-      setApiError(error instanceof Error ? error.message : t.uploadFailed);
-      localSource.status = "failed";
-      addSource(localSource);
-      return null;
-    } finally {
-      setIsAiThinking(false);
-    }
-  }
-
-  async function processSource(source: WorkspaceSource) {
-    if (!source.document) {
-      pushMessage("assistant", locale === "id" ? "Sumber ini belum punya dokumen backend, jadi belum bisa diproses. Untuk URL, endpoint fetch konten masih perlu ditambahkan." : "This source does not have a backend document yet, so it cannot be processed. URL content fetching still needs an endpoint.");
-      return;
-    }
-
-    setPhase("processing");
-    setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "processing" } : item));
-
-    try {
-      if (source.ocrDraftMarkdown) {
-        await postJson<BackendDocument>(`/api/documents/${source.document.id}/ocr-draft`, {
-          markdown: source.ocrDraftMarkdown,
-          actor: "workspace_user",
-        });
-      }
-      const result = await postJson<{ document: BackendDocument; resume: BackendResume }>(`/api/documents/${source.document.id}/process`, {});
-      setResume(result.resume);
-      setPhase("review_required");
-      setSources((items) => items.map((item) => item.id === source.id ? { ...item, document: result.document, status: "review_required" } : item));
-      pushMessage("assistant", result.resume.summary);
-    } catch (error) {
-      setPhase("failed");
-      setApiError(error instanceof Error ? error.message : "Process failed");
-      setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "failed" } : item));
-    }
-  }
-
-  async function rerunOcr(source: WorkspaceSource) {
-    if (!source.document) return;
-    setPhase("processing");
-    setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "processing" } : item));
-    pushMessage("assistant", locale === "id" ? "Saya jalankan ulang OCR untuk bukti terpilih. Hasil baru akan tampil sebagai draf yang bisa Anda koreksi." : "I am running OCR again for the selected evidence. The new result will appear as an editable draft.", source.id);
-    try {
-      const quickCheck = await postJson<QuickCheckResponse>(`/api/documents/${source.document.id}/quick-check`, {});
-      const nextSource = {
-        ...source,
-        detail: `${quickCheck.document_type} · ${quickCheck.provider}`,
-        ocrDraftMarkdown: quickCheck.markdown,
-        status: "quick_checked" as const,
-      };
-      setSources((items) => items.map((item) => item.id === source.id ? nextSource : item));
-      setPhase("source_review");
-      pushMessage("assistant", quickCheck.markdown, source.id, "confirm_process");
-    } catch (error) {
-      setPhase("failed");
-      setApiError(error instanceof Error ? error.message : "Re-OCR failed");
-      setSources((items) => items.map((item) => item.id === source.id ? { ...item, status: "failed" } : item));
-    }
-  }
-
-  function updateOcrDraft(sourceId: string, value: string) {
-    setSources((items) => items.map((item) => item.id === sourceId ? { ...item, ocrDraftMarkdown: value } : item));
-  }
-
-  async function confirmResult() {
-    if (!selectedSource?.document) return;
-    try {
-      const confirmedDocument = await postJson<BackendDocument>(`/api/documents/${selectedSource.document.id}/confirm`, {
-        actor: "workspace_user",
-      });
-      setPhase("confirmed");
-      setSources((items) => items.map((item) => item.id === selectedSource.id ? { ...item, document: confirmedDocument, status: "confirmed" } : item));
-      
-      const confirmNotice = locale === "id"
-        ? `✅ **Data Transaksi Berhasil Diposting ke Database!**\n\n- **Dokumen**: \`${selectedSource.label}\`\n- **Status**: \`POSTED\` (Terkunci permanen di PostgreSQL \`bizeto_psak_db\`)\n- **Langkah Selanjutnya**: Data telah masuk ke Financial Engine untuk pembuatan Laporan Laba Rugi, Balance Sheet, & Neraca Saldo.`
-        : `✅ **Transaction Data Successfully Posted to Database!**\n\n- **Document**: \`${selectedSource.label}\`\n- **Status**: \`POSTED\` (Permanently locked in PostgreSQL \`bizeto_psak_db\`)\n- **Next Step**: Data ingested into Financial Engine for Profit & Loss, Balance Sheet, & Trial Balance generation.`;
-
-      pushMessage("assistant", confirmNotice, selectedSource.id);
-    } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Confirm failed");
-      pushMessage("assistant", `❌ Gagal menyimpan konfirmasi posting: ${error instanceof Error ? error.message : "Error server"}`, selectedSource.id);
-    }
-  }
-
-  function reset() {
-    sources.forEach((source) => {
-      if (source.previewUrl) URL.revokeObjectURL(source.previewUrl);
-    });
-    setPhase("idle");
-    setMessages([]);
-    setSources([]);
-    setSelectedSourceId(null);
-    setResume(null);
-    setApiError("");
-    updateChatDraft("");
-  }
-
-  function addSource(source: WorkspaceSource) {
-    setSources((items) => [source, ...items]);
-    setSelectedSourceId(source.id);
-    setPhase("source_review");
-  }
-
-  function pushMessage(role: MessageRole, content: string, sourceId?: string, actions?: ChatMessage["actions"], attachment?: ChatMessage["attachment"]) {
-    setMessages((items) => [...items, { id: crypto.randomUUID(), role, content, sourceId, actions, attachment }]);
-  }
-
-  function respondWithSourcePlan(source: WorkspaceSource, context?: string) {
-    const message = buildSourcePlan(source, locale, context);
-    pushMessage("assistant", message, source.id, "confirm_process");
-  }
-
-
+  const confirmAllDrafts = () => {
+    setTransactions((prev) =>
+      prev.map((t) => (t.status === "DRAFT" ? { ...t, status: "POSTED" } : t))
+    );
+  };
 
   return (
-    <main className="h-screen overflow-hidden bg-canvas text-ink">
-      <header className="flex h-[70px] items-center justify-between border-b border-line bg-canvas/95 px-5 backdrop-blur md:px-7">
-        <div className="flex min-w-0 items-center gap-5">
-          <Link href="/" className="text-muted-foreground hover:text-ink" aria-label="Back">
-            <ArrowLeft size={18} />
-          </Link>
-          <img src="/brand/navbrand.svg" alt="Bizeto PSAK" width="205" height="36" className="block dark:hidden" />
-          <img src="/brand/navbrand-dark.svg" alt="Bizeto PSAK" width="205" height="36" className="hidden dark:block" />
-          <span className="hidden text-muted-foreground sm:inline">/</span>
-          <span className="hidden truncate text-sm font-semibold sm:inline">{t.workspace}</span>
+    <div
+      className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
+        isDarkMode ? "bg-[#090D12] text-slate-100" : "bg-slate-50 text-slate-900"
+      }`}
+    >
+      {/* 🔹 HEADER UTAMA RESPONSIVE */}
+      <header
+        className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 lg:px-8 py-3 flex items-center justify-between transition-colors ${
+          isDarkMode ? "bg-[#0E141D]/90 border-slate-800" : "bg-white/90 border-slate-200"
+        }`}
+      >
+        {/* Brand Logo & Mobile Toggle */}
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 rounded-lg hover:bg-slate-800/50 text-slate-400"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          <div className="flex items-center space-x-2">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#D4AF37] to-[#00A896] p-[2px] flex items-center justify-center shadow-lg shadow-[#00A896]/10">
+              <div className="w-full h-full bg-[#0E141D] rounded-[10px] flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-[#D4AF37]" />
+              </div>
+            </div>
+            <div>
+              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-[#D4AF37] via-amber-200 to-teal-400 bg-clip-text text-transparent">
+                Bizeto PSAK
+              </span>
+              <span className="hidden sm:inline-block ml-2 text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                Omni AI Workspace
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={reset} className="inline-flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs font-bold text-gold hover:bg-gold hover:text-white transition">
-            <Plus size={14} /> {t.reset}
+
+        {/* Center Controls (Entity & Period Picker - Desktop) */}
+        <div className="hidden md:flex items-center space-x-3 text-xs font-medium">
+          <div
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg border ${
+              isDarkMode
+                ? "bg-[#131B26] border-slate-800 text-slate-300"
+                : "bg-slate-100 border-slate-200 text-slate-700"
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span>{activeEntity}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+          <div
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg border ${
+              isDarkMode
+                ? "bg-[#131B26] border-slate-800 text-slate-300"
+                : "bg-slate-100 border-slate-200 text-slate-700"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-teal-400" />
+            <span>{activePeriod}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+        </div>
+
+        {/* Right Actions */}
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-lg border transition-all ${
+              isDarkMode
+                ? "bg-[#131B26] border-slate-800 text-amber-400 hover:bg-slate-800"
+                : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200"
+            }`}
+            title="Toggle Theme"
+          >
+            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          <span className="hidden text-xs font-bold text-gold md:inline">
-            🏢 {selectedEntity || t.entity} · {t.period}
-          </span>
-          <button onClick={() => setLocale(locale === "id" ? "en" : "id")} className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-bold">
-            <Languages size={14} /> {locale === "id" ? "EN" : "ID"}
+          <button
+            className={`hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+              isDarkMode
+                ? "bg-[#131B26] border-slate-800 text-slate-300 hover:bg-slate-800"
+                : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-teal-400" />
+            <span>ID</span>
           </button>
-          {hasSource && (
-            <button onClick={() => setInspector(!inspector)} className={`rounded-lg border border-line bg-panel p-2 ${inspector ? "text-gold" : "text-muted-foreground"}`} aria-label="Toggle inspector">
-              <PanelRight size={16} />
-            </button>
-          )}
         </div>
       </header>
 
-      <div className={`grid h-[calc(100vh-70px)] min-h-0 ${showInspector ? "lg:grid-cols-[236px_minmax(520px,1fr)_328px]" : "lg:grid-cols-[236px_minmax(520px,1fr)]"}`}>
-        <aside className="hidden h-full min-h-0 border-r border-line bg-panel/45 p-4 lg:flex lg:flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {startMode ? (
-              <StartSidebar t={t} sources={sources} onSelectSource={setSelectedSourceId} />
-            ) : (
-              <WorkspaceSidebar
-                locale={locale}
-                t={t}
-                phase={phase}
-                sources={sources}
-                selectedSourceId={selectedSource?.id ?? null}
-                setSelectedSourceId={setSelectedSourceId}
-              />
-            )}
+      {/* 🔹 MOBILE NAVIGATION MENU */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden border-b border-slate-800 bg-[#0E141D] px-4 py-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between py-2 border-b border-slate-800">
+            <span className="text-slate-400">Entitas Aktif:</span>
+            <span className="font-semibold text-[#D4AF37]">{activeEntity}</span>
           </div>
-          <SidebarFooter locale={locale} theme={theme} setTheme={setThemeState} />
-        </aside>
-
-        <section className="flex h-full min-w-0 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 md:px-8 lg:px-10">
-            <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col">
-              {startMode ? (
-                <StartRoom
-                  t={t}
-                  locale={locale}
-                  attachOpen={attachOpen}
-                  setAttachOpen={setAttachOpen}
-                  pendingAttachment={pendingAttachment}
-                  onRemoveAttachment={() => setPendingAttachment(null)}
-                  chatDraft={chatDraft}
-                  updateChatDraft={updateChatDraft}
-                  chatRef={chatRef}
-                  onFile={onFile}
-                  onSend={sendMessage}
-                />
-              ) : (
-                <div className="space-y-4 pb-6">
-                  {messages.map((message) => (
-                    <ChatBubble
-                      key={message.id}
-                      message={message}
-                      t={t}
-                      locale={locale}
-                      source={message.sourceId ? sources.find((item) => item.id === message.sourceId) : undefined}
-                      entities={entities}
-                      selectedEntity={selectedEntity}
-                      onSelectEntity={handleSelectEntity}
-                      onCopy={() => {
-                        void navigator.clipboard.writeText(message.content);
-                        setMessages((items) =>
-                          items.map((m) => (m.id === message.id ? { ...m, copied: true } : m))
-                        );
-                        setTimeout(() => {
-                          setMessages((items) =>
-                            items.map((m) => (m.id === message.id ? { ...m, copied: false } : m))
-                          );
-                        }, 2000);
-                      }}
-                      onFeedback={(vote) => {
-                        setMessages((items) =>
-                          items.map((m) => (m.id === message.id ? { ...m, feedback: m.feedback === vote ? undefined : vote } : m))
-                        );
-                      }}
-                      onUpdateOcrDraft={updateOcrDraft}
-                      onRerunOcr={(source) => void rerunOcr(source)}
-                      onConfirm={() => {
-                        const source = sources.find((item) => item.id === message.sourceId);
-                        if (source) void processSource(source);
-                      }}
-                    />
-                  ))}
-                  {isAiThinking && (
-                    <div className="flex items-start gap-3 text-left">
-                      <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-gold/15 text-gold border border-gold/30">
-                        <Sparkles size={16} className="animate-spin" />
-                      </div>
-                      <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-sm">
-                        <div className="flex items-center gap-1.5 py-1">
-                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="size-2 rounded-full bg-gold animate-bounce" style={{ animationDelay: "300ms" }} />
-                          <span className="ml-2 text-xs text-muted-foreground/80 font-medium">{locale === "id" ? "Senior Akuntan AI sedang menganalisis…" : "Senior Accountant AI is analyzing…"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {apiError && <div className="rounded-xl border border-[#5B482E] bg-[#2C2418] p-4 text-xs text-[#EDCE91]">{apiError}</div>}
-                  {resume && (
-                    <ResumeCard
-                      locale={locale}
-                      t={t}
-                      resume={resume}
-                      confirmed={phase === "confirmed"}
-                      onConfirm={confirmResult}
-                    />
-                  )}
-                  <div ref={messageEndRef} />
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-between py-2 border-b border-slate-800">
+            <span className="text-slate-400">Periode Pembukuan:</span>
+            <span className="font-semibold text-teal-400">{activePeriod}</span>
           </div>
-
-          {!startMode && (
-            <Composer
-              t={t}
-              locale={locale}
-              attachOpen={attachOpen}
-              setAttachOpen={setAttachOpen}
-              pendingAttachment={pendingAttachment}
-              onRemoveAttachment={() => setPendingAttachment(null)}
-              chatDraft={chatDraft}
-              updateChatDraft={updateChatDraft}
-              chatRef={chatRef}
-              onFile={onFile}
-              onSend={sendMessage}
-              onReset={reset}
-            />
-          )}
-        </section>
-
-        {showInspector && (
-          <Inspector
-            locale={locale}
-            t={t}
-            source={selectedSource}
-            phase={phase}
-            resume={resume}
-            onClose={() => setInspector(false)}
-          />
-        )}
-      </div>
-    </main>
-  );
-}
-
-function StartRoom(props: {
-  t: WorkspaceCopy;
-  locale: Locale;
-  attachOpen: boolean;
-  setAttachOpen: (open: boolean) => void;
-  pendingAttachment: { file: File; previewUrl?: string } | null;
-  onRemoveAttachment: () => void;
-  chatDraft: string;
-  updateChatDraft: (value: string) => void;
-  chatRef: RefObject<HTMLTextAreaElement | null>;
-  onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
-  onSend: () => void | Promise<void>;
-}) {
-  const { t, locale, attachOpen, setAttachOpen, pendingAttachment, onRemoveAttachment, chatDraft, updateChatDraft, chatRef, onSend } = props;
-  return (
-    <div className="flex min-h-[calc(100vh-170px)] flex-col items-center justify-center text-center">
-      <div className="mb-7">
-        <p className="mb-4 text-[10px] font-bold uppercase tracking-[.2em] text-muted-foreground/85">{t.aiName}</p>
-        <h1 className="text-3xl font-medium tracking-[-.035em] md:text-[44px] md:leading-tight">{t.title}</h1>
-        <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">{t.subtitle}</p>
-      </div>
-      <div className="relative w-full max-w-4xl rounded-[18px] border border-line bg-panel p-4 text-left shadow-[0_28px_90px_rgba(0,0,0,.24)] ring-1 ring-gold/15 before:pointer-events-none before:absolute before:inset-[-1px] before:rounded-[18px] before:bg-[linear-gradient(90deg,rgba(12,143,124,.32),rgba(184,138,61,.28),rgba(80,112,255,.18))] before:opacity-40 before:blur-xl before:content-['']">
-        <div className="relative">
-          {attachOpen && (
-            <AttachMenu t={t} onFile={props.onFile} className="absolute bottom-16 left-4 z-10" />
-          )}
-
-          {/* Gemini App Style Pending Attachment Thumbnail */}
-          {pendingAttachment && (
-            <div className="mb-3 flex items-center gap-3 self-start rounded-xl border border-line bg-muted/60 p-2 pr-3">
-              {pendingAttachment.previewUrl ? (
-                <img src={pendingAttachment.previewUrl} alt="Thumbnail preview" className="size-12 rounded-lg object-cover" />
-              ) : (
-                <div className="grid size-12 place-items-center rounded-lg bg-panel border border-line text-ink font-bold text-xs uppercase">
-                  {pendingAttachment.file.name.split('.').pop() || 'FILE'}
-                </div>
-              )}
-              <div className="flex flex-col max-w-[200px] sm:max-w-xs">
-                <span className="truncate text-xs font-semibold text-ink">{pendingAttachment.file.name}</span>
-                <span className="text-[10px] text-muted-foreground">{(pendingAttachment.file.size / 1024).toFixed(1)} KB · Siap dikirim</span>
-              </div>
-              <button
-                onClick={onRemoveAttachment}
-                className="ml-auto grid size-6 place-items-center rounded-full bg-canvas/80 text-muted-foreground transition hover:bg-red-500 hover:text-white"
-                title="Hapus lampiran"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          )}
-
-          <textarea
-            ref={chatRef}
-            value={chatDraft}
-            onChange={(event) => updateChatDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void onSend();
-              }
-            }}
-            placeholder={t.placeholder}
-            rows={3}
-            className="max-h-[220px] min-h-28 w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground"
-          />
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setAttachOpen(!attachOpen)} className={`grid size-9 place-items-center rounded-full border border-line ${attachOpen ? "bg-gold text-white" : "bg-muted text-muted-foreground hover:text-ink"}`} aria-label="Add source">
-                <Plus size={17} />
-              </button>
-              <button className="grid size-9 place-items-center rounded-full border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Voice input">
-                <Mic2 size={16} />
-              </button>
-            </div>
-            <button onClick={() => void onSend()} className="grid size-10 place-items-center rounded-lg bg-gold text-white" aria-label="Send">
-              <ArrowUp size={16} />
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button
+              onClick={() => {
+                setViewMode("chat");
+                setIsMobileMenuOpen(false);
+              }}
+              className="px-3 py-2 rounded bg-slate-800 text-slate-200 font-medium text-left"
+            >
+              💬 Workspace Chat
+            </button>
+            <button
+              onClick={() => {
+                setViewMode("report_pnl");
+                setIsMobileMenuOpen(false);
+              }}
+              className="px-3 py-2 rounded bg-slate-800 text-slate-200 font-medium text-left"
+            >
+              📊 Laporan Laba Rugi
             </button>
           </div>
         </div>
-      </div>
-      <div className="mt-6 flex max-w-4xl flex-wrap justify-center gap-2">
-        {[
-          locale === "id" ? "Diskusi akuntansi" : "Accounting discussion",
-          locale === "id" ? "Upload bukti" : "Attach evidence",
-          "URL",
-          "PSAK",
-          locale === "id" ? "Review sebelum proses" : "Review before process",
-        ].map((chip) => (
-          <span key={chip} className="rounded-full bg-panel px-4 py-2 text-xs font-semibold text-muted-foreground">{chip}</span>
-        ))}
-      </div>
-      <p className="mt-8 rounded-full border border-line bg-panel px-4 py-2 text-xs font-semibold text-muted-foreground">{t.emptyHint}</p>
-    </div>
-  );
-}
+      )}
 
-function StartSidebar(props: { t: WorkspaceCopy; sources: WorkspaceSource[]; onSelectSource: (id: string) => void }) {
-  const { t, sources, onSelectSource } = props;
-  const [showMyWorkspaces, setShowMyWorkspaces] = useState(false);
-
-  return (
-    <div className="space-y-6">
-      <SidebarGroup title={t.explore} items={[
-        { icon: Sparkles, label: t.playground },
-        { icon: History, label: t.history },
-      ]} />
-      
-      <div>
-        <SidebarGroup title={t.process} items={[
-          { icon: Plus, label: t.newWorkspace, active: !showMyWorkspaces, onClick: () => setShowMyWorkspaces(false) },
-          { icon: ClipboardList, label: `${t.myWorkspaces} (${sources.length})`, active: showMyWorkspaces, onClick: () => setShowMyWorkspaces(true) },
-          { icon: Grid2X2, label: t.templates },
-        ]} />
-
-        {showMyWorkspaces && (
-          <div className="mt-3 rounded-xl border border-line/60 bg-canvas/45 p-2 space-y-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">📁 Sesi Workspace Dibuat:</p>
-            {sources.length === 0 ? (
-              <p className="text-xs text-muted-foreground px-2 py-1">Belum ada workspace dibuat.</p>
-            ) : (
-              sources.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectSource(item.id)}
-                  className="flex w-full items-center justify-between rounded-lg p-2 text-left text-xs font-semibold hover:bg-muted hover:text-ink transition"
-                >
-                  <span className="truncate">{item.label}</span>
-                  <span className={`text-[10px] font-bold ${item.status === "confirmed" ? "text-teal" : "text-amber-500"}`}>
-                    {item.status === "confirmed" ? "POSTED" : "DRAFT"}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      <SidebarGroup title={t.manage} items={[
-        { icon: Gauge, label: t.entities },
-        { icon: Settings, label: "COA" },
-        { icon: BookOpen, label: t.documentation },
-      ]} />
-    </div>
-  );
-}
-
-function SidebarGroup({ title, items }: { title: string; items: Array<{ icon: LucideIcon; label: string; active?: boolean; onClick?: () => void }> }) {
-  return (
-    <div>
-      <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">{title}</p>
-      <div className="space-y-1">
-        {items.map(({ icon: Icon, label, active, onClick }) => (
-          <button key={label} onClick={onClick} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${active ? "bg-muted text-ink font-bold" : "text-muted-foreground/80 hover:bg-muted hover:text-ink"}`}>
-            <Icon size={15} />
-            <span className="truncate">{label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AttachMenu({ t, onFile, className = "" }: { t: WorkspaceCopy; onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>; className?: string }) {
-  return (
-    <div className={`${className} w-56 rounded-xl border border-line bg-panel p-2 shadow-panel`}>
-      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-ink">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Upload size={15} /></span>
-        <span>{t.inputModes.upload}</span>
-        <input type="file" className="sr-only" accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,audio/*" onChange={onFile} />
-      </label>
-      <div className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Sparkles size={15} /></span>
-        <span>{t.inputModes.url}</span>
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceSidebar(props: {
-  locale: Locale;
-  t: WorkspaceCopy;
-  phase: WorkspacePhase;
-  sources: WorkspaceSource[];
-  selectedSourceId: string | null;
-  setSelectedSourceId: (id: string) => void;
-}) {
-  const { locale, t, phase, sources, selectedSourceId, setSelectedSourceId } = props;
-  return (
-    <div className="space-y-5 pb-2">
-      <div className="rounded-xl border border-line bg-canvas/45 p-3">
-        <div className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-full bg-gold/15 text-gold">
-            <Sparkles size={14} />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold">{t.aiName}</p>
-            <p className="text-[10px] font-semibold capitalize text-muted-foreground">{phase.replace("_", " ")}</p>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2 px-1">
-          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">📜 {locale === "id" ? "Riwayat Sesi Draf" : "Draft Session History"}</p>
-          <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">DRAFT</span>
-        </div>
-        {sources.length === 0 ? (
-          <p className="rounded-lg border border-line bg-canvas/35 p-3 text-xs text-muted-foreground">{t.noSources}</p>
-        ) : (
-          <div className="space-y-1.5">
-            {sources.map((source) => (
-              <button
-                key={source.id}
-                onClick={() => setSelectedSourceId(source.id)}
-                className={`flex w-full items-start gap-2 rounded-xl p-2.5 text-left transition border ${
-                  selectedSourceId === source.id ? "bg-gold/10 border-gold/40 text-ink ring-1 ring-gold/25" : "border-line/60 bg-panel text-muted-foreground hover:bg-muted hover:text-ink"
-                }`}
-              >
-                <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-gold/15 text-gold mt-0.5">
-                  <FileSpreadsheet size={14} />
-                </div>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-bold text-ink">{source.label}</span>
-                  <span className="mt-0.5 flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span className="truncate">{source.detail}</span>
-                    <span className={`ml-1 font-bold ${source.status === "confirmed" ? "text-teal" : "text-amber-500"}`}>
-                      {source.status === "confirmed" ? "✓ POSTED" : "● DRAFT"}
-                    </span>
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground/75">{t.processLog}</p>
-        {sources.length === 0 ? (
-          <p className="rounded-lg border border-line bg-canvas/35 p-3 text-xs text-muted-foreground">{t.noProcess}</p>
-        ) : (
-          <div className="space-y-1.5">
-            {sources.slice(0, 4).map((source) => (
-              <div key={source.id} className="rounded-lg border border-line bg-canvas/35 p-2.5">
-                <div className="flex items-start gap-2">
-                  <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full ${source.status === "confirmed" ? "bg-teal/15 text-teal" : source.status === "failed" ? "bg-red-500/10 text-red-500" : "bg-gold/15 text-gold"}`}>
-                    {source.status === "confirmed" ? <Check size={12} /> : <span className="size-1.5 rounded-full bg-current" />}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-bold">{source.status.replace("_", " ")}</p>
-                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{locale === "id" ? "Menunggu instruksi eksplisit atau konfirmasi" : "Waiting for explicit instruction or confirmation"}</p>
-                  </div>
-                </div>
+      {/* 🔹 BODY UTAMA: GENERATIVE ARTIFACT CANVAS */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 lg:p-8 flex flex-col justify-between space-y-6 pb-28">
+        
+        {/* VIEW 1: CHAT & DRAFT INGESTION FEED */}
+        {viewMode === "chat" && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Greeting Banner */}
+            <div className="text-center py-6 space-y-2">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 to-teal-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                <span>PSAK Financial Engine & 0% Hallucination Native Parser</span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChatBubble(props: {
-  message: ChatMessage;
-  t: WorkspaceCopy;
-  locale: Locale;
-  source?: WorkspaceSource;
-  entities: Array<{ id: string; name: string }>;
-  selectedEntity: string | null;
-  onSelectEntity: (name: string) => void;
-  onCopy: () => void;
-  onFeedback: (vote: "up" | "down") => void;
-  onUpdateOcrDraft: (sourceId: string, value: string) => void;
-  onRerunOcr: (source: WorkspaceSource) => void;
-  onConfirm: () => void;
-}) {
-  const {
-    message,
-    t,
-    locale,
-    source,
-    entities,
-    selectedEntity,
-    onSelectEntity,
-    onCopy,
-    onFeedback,
-    onConfirm,
-    onRerunOcr,
-    onUpdateOcrDraft,
-  } = props;
-  const isUser = message.role === "user";
-  const isImageOcrReview = message.actions === "confirm_process" && source?.document?.document_type === "image_evidence";
-  const isWorking = !isUser && source?.status === "processing" && !message.actions;
-  const displayContent = isImageOcrReview && source?.ocrDraftMarkdown ? source.ocrDraftMarkdown : message.content;
-
-  return (
-    <div className={`group flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`${isUser ? "max-w-[85%]" : "w-full max-w-none"} ${isWorking ? "relative overflow-hidden rounded-2xl p-[1px] before:absolute before:inset-[-70%] before:animate-spin before:bg-[conic-gradient(from_90deg,rgba(12,143,124,.05),rgba(12,143,124,.85),rgba(217,168,91,.85),rgba(80,112,255,.55),rgba(12,143,124,.05))] before:content-['']" : ""}`}>
-        <div className={`relative rounded-2xl px-4 py-3.5 text-sm leading-6 ${isUser ? "bg-panel border border-gold/30 shadow-sm text-ink" : isWorking ? "bg-panel" : "border border-line bg-panel"}`}>
-          
-          {/* Render Thumbnail Lampiran Berkas di Dalam Bubble Chat (Gemini App style) */}
-          {message.attachment && (
-            <div className="mb-3 flex items-center gap-3 self-start rounded-xl border border-line bg-muted/50 p-2 pr-3">
-              {message.attachment.previewUrl ? (
-                <img src={message.attachment.previewUrl} alt="Attachment thumbnail" className="size-12 rounded-lg object-cover border border-line" />
-              ) : (
-                <div className="grid size-12 place-items-center rounded-lg bg-canvas border border-line text-ink font-bold text-xs uppercase">
-                  {message.attachment.filename.split('.').pop() || 'FILE'}
-                </div>
-              )}
-              <div className="flex flex-col max-w-[200px] sm:max-w-xs">
-                <span className="truncate text-xs font-semibold text-ink">{message.attachment.filename}</span>
-                <span className="text-[10px] text-muted-foreground">{(message.attachment.sizeBytes / 1024).toFixed(1)} KB</span>
-              </div>
-            </div>
-          )}
-
-          {/* Teks Pesan Chat */}
-          <MarkdownContent text={displayContent} />
-
-          {/* Opsi Dropdown Klien / Entitas (Bersih tanpa nested card rumit) */}
-          {message.actions === "select_entity" && (
-            <div className="mt-3.5 border-t border-line/60 pt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground">Pilih Klien:</span>
-                <div className="relative inline-block">
-                  <select
-                    value={selectedEntity || ""}
-                    onChange={(e) => onSelectEntity(e.target.value)}
-                    className="cursor-pointer appearance-none rounded-lg border border-gold/40 bg-canvas px-3 py-1.5 pr-8 text-xs font-semibold text-gold outline-none hover:border-gold"
-                  >
-                    <option value="" disabled>-- Pilih Klien / Perusahaan --</option>
-                    {entities.map((item) => (
-                      <option key={item.id} value={item.name}>
-                        🏢 {item.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gold" />
-                </div>
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground/90">
-                💡 <em>Tips: Untuk menambah klien baru, ketik di chat dengan awalan <code className="rounded bg-muted px-1.5 py-0.5 text-ink font-mono">client : Nama Klien Baru</code></em>
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+                Halo, Ada Yang Bisa Diumpan Ke AI Akuntansi Hari Ini?
+              </h1>
+              <p className="text-xs md:text-sm text-slate-400 max-w-xl mx-auto">
+                Unggah nota belanja, buku besar Excel, atau cukup tanyakan laporan keuangan. Data Anda diproses 100% presisi dan tersimpan di PostgreSQL Server.
               </p>
             </div>
-          )}
 
-          {/* OCR Review (Jika ada) */}
-          {isImageOcrReview && source?.ocrDraftMarkdown && (
-            <div className="mt-3.5 border-t border-line pt-3">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold">{t.ocrEditor}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t.ocrEditorHint}</p>
-                </div>
-                <button onClick={() => onRerunOcr(source)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:text-ink">
-                  <RefreshCw size={12} /> {t.rerunOcr}
-                </button>
-              </div>
-              <textarea
-                value={source.ocrDraftMarkdown}
-                onChange={(event) => onUpdateOcrDraft(source.id, event.target.value)}
-                rows={7}
-                className="max-h-72 min-h-32 w-full resize-y rounded-lg border border-line bg-canvas/45 p-3 font-mono text-[11px] leading-5 outline-none focus:border-gold"
-              />
-            </div>
-          )}
-
-          {/* Tombol Aksi Konfirmasi */}
-          {message.actions === "confirm_process" && source?.document && (
-            <button onClick={onConfirm} className="mt-3 rounded-lg bg-teal px-3.5 py-2 text-xs font-bold text-white shadow-[0_10px_28px_rgba(12,143,124,.22)] hover:brightness-105">
-              {t.continueProcess}
-            </button>
-          )}
-
-          {/* Action Bar (Copy Text & Thumbs Up/Down Review Feedback) */}
-          {!isUser && (
-            <div className="mt-2.5 flex items-center justify-between border-t border-line/40 pt-2 text-xs text-muted-foreground/75">
-              <div className="flex items-center gap-1">
-                {/* Copy Button */}
-                <button
-                  onClick={onCopy}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 transition hover:bg-muted hover:text-ink"
-                  title="Salin teks respon"
-                >
-                  <Copy size={13} />
-                  <span className="text-[11px]">{message.copied ? (locale === "id" ? "Tersalin!" : "Copied!") : (locale === "id" ? "Salin" : "Copy")}</span>
-                </button>
-              </div>
-
-              {/* Thumbs Up & Thumbs Down Review */}
-              <div className="flex items-center gap-1">
-                <span className="mr-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">Review:</span>
-                <button
-                  onClick={() => onFeedback("up")}
-                  className={`grid size-7 place-items-center rounded-md transition ${
-                    message.feedback === "up"
-                      ? "bg-teal/20 text-teal font-bold"
-                      : "hover:bg-muted hover:text-ink"
-                  }`}
-                  title="Sangat Baik / Sesuai"
-                >
-                  <ThumbsUp size={13} />
-                </button>
-                <button
-                  onClick={() => onFeedback("down")}
-                  className={`grid size-7 place-items-center rounded-md transition ${
-                    message.feedback === "down"
-                      ? "bg-red-500/20 text-red-500 font-bold"
-                      : "hover:bg-muted hover:text-ink"
-                  }`}
-                  title="Perlu Perbaikan / Kurang Tepat"
-                >
-                  <ThumbsDown size={13} />
-                </button>
-              </div>
-            </div>
-          )}
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MarkdownContent({ text }: { text: string }) {
-  // Tangkap seluruh blok HTML murni dari <div class=... hingga </div> terluar
-  const htmlBlockRegex = /(<div\b[\s\S]*<\/div>|<table\b[\s\S]*<\/table>)/gi;
-  const parts = text.split(htmlBlockRegex);
-
-  return (
-    <div className="space-y-2">
-      {parts.map((part, idx) => {
-        const cleanPart = part.trim().replace(/^(<\/div>)+|(<\/div>)+$/g, "").trim();
-        if (!cleanPart) return null;
-        if (cleanPart.startsWith("<div") || cleanPart.startsWith("<table")) {
-          return (
-            <div
-              key={idx}
-              dangerouslySetInnerHTML={{ __html: cleanPart }}
-              className="my-2"
-            />
-          );
-        }
-        return <MarkdownSubBlocks key={idx} text={cleanPart} />;
-      })}
-    </div>
-  );
-}
-
-function MarkdownSubBlocks({ text }: { text: string }) {
-  const blocks = text.split(/```(\w+)?\n?([\s\S]*?)```/g);
-  const nodes = [];
-
-  for (let index = 0; index < blocks.length; index += 1) {
-    if (index % 3 === 0) {
-      nodes.push(<MarkdownText key={index} text={blocks[index]} />);
-    } else if (index % 3 === 1) {
-      const code = blocks[index + 1] ?? "";
-      nodes.push(
-        <pre key={index} className="my-3 max-h-72 overflow-auto rounded-xl border border-line bg-canvas/70 p-3 text-[11px] leading-5 text-muted-foreground">
-          <code>{code.trim()}</code>
-        </pre>,
-      );
-      index += 1;
-    }
-  }
-
-  return <div className="space-y-2">{nodes}</div>;
-}
-
-function MarkdownText({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const nodes = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const trimmed = lines[index].trim();
-    if (isMarkdownTableStart(lines, index)) {
-      const tableLines = [];
-      while (index < lines.length && lines[index].trim().startsWith("|")) {
-        tableLines.push(lines[index].trim());
-        index += 1;
-      }
-      index -= 1;
-      nodes.push(<MarkdownTable key={index} lines={tableLines} />);
-      continue;
-    }
-
-    if (!trimmed) {
-      nodes.push(<div key={index} className="h-1" />);
-    } else if (trimmed.startsWith("### ")) {
-      nodes.push(<h3 key={index} className="pt-2 text-sm font-bold text-ink">{renderInline(trimmed.slice(4))}</h3>);
-    } else if (trimmed.startsWith("## ")) {
-      nodes.push(<h2 key={index} className="pt-2 text-base font-bold text-ink">{renderInline(trimmed.slice(3))}</h2>);
-    } else if (trimmed.startsWith("# ")) {
-      nodes.push(<h1 key={index} className="pt-2 text-lg font-bold text-ink">{renderInline(trimmed.slice(2))}</h1>);
-    } else if (trimmed.startsWith("- ")) {
-      nodes.push(<p key={index} className="pl-3 text-sm before:mr-2 before:content-['•']">{renderInline(trimmed.slice(2))}</p>);
-    } else if (/^\d+\.\s/.test(trimmed)) {
-      nodes.push(<p key={index} className="pl-3 text-sm">{renderInline(trimmed)}</p>);
-    } else {
-      nodes.push(<p key={index} className="text-sm">{renderInline(trimmed)}</p>);
-    }
-  }
-  return <div className="space-y-1.5">{nodes}</div>;
-}
-
-function isMarkdownTableStart(lines: string[], index: number) {
-  const current = lines[index]?.trim() ?? "";
-  const next = lines[index + 1]?.trim() ?? "";
-  return current.startsWith("|") && next.startsWith("|") && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(next);
-}
-
-function MarkdownTable({ lines }: { lines: string[] }) {
-  const headers = splitMarkdownRow(lines[0]);
-  const rows = lines.slice(2).map(splitMarkdownRow);
-  return (
-    <div className="my-3 max-h-80 w-full overflow-auto">
-      <table className="w-full border-collapse text-left text-xs">
-        <thead className="sticky top-0 bg-panel text-[10px] uppercase tracking-wider text-muted-foreground shadow-[0_1px_0_hsl(var(--border))]">
-          <tr>
-            {headers.map((header) => <th key={header} className="border-b border-line px-3 py-2 font-bold">{renderInline(header)}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="odd:bg-canvas/30">
-              {headers.map((_, cellIndex) => <td key={cellIndex} className="border-b border-line/70 px-3 py-2 align-top">{renderInline(row[cellIndex] || "-")}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function splitMarkdownRow(line: string) {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").replace(/<br>/g, "\n").trim());
-}
-
-function renderInline(text: string) {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={index} className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-gold">{part.slice(1, -1)}</code>;
-    }
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={index} className="font-bold text-ink">{part.slice(2, -2)}</strong>;
-    }
-    return <span key={index}>{part}</span>;
-  });
-}
-
-function ResumeCard(props: {
-  locale: Locale;
-  t: WorkspaceCopy;
-  resume: BackendResume;
-  confirmed: boolean;
-  onConfirm: () => void;
-}) {
-  const { locale, t, resume, confirmed, onConfirm } = props;
-  return (
-    <div className="overflow-hidden rounded-xl border border-line bg-panel">
-      <div className="flex items-start gap-3 border-b border-line p-4">
-        <div className="grid size-7 shrink-0 place-items-center rounded-full bg-teal/15 text-teal"><Check size={15} /></div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold">{locale === "id" ? "Resume proses" : "Processing resume"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{resume.summary}</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-        <Metric label={locale === "id" ? "Baris dibaca" : "Rows read"} value={String(resume.row_count)} />
-        <Metric label={locale === "id" ? "Debit kandidat" : "Debit draft"} value={formatRupiah(resume.debit_total)} />
-        <Metric label={locale === "id" ? "Kredit kandidat" : "Credit draft"} value={formatRupiah(resume.credit_total)} />
-        <Metric label={locale === "id" ? "Issue" : "Issues"} value={String(resume.issues.length)} warning={resume.issues.length > 0} />
-      </div>
-      <div className="px-4 pb-4">
-        <div className="mb-2 flex justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-          <span>{locale === "id" ? "Confidence" : "Confidence"}</span>
-          <span className="text-teal">{Math.round(resume.confidence * 100)}%</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-muted"><div className="h-1.5 rounded-full bg-teal" style={{ width: `${Math.round(resume.confidence * 100)}%` }} /></div>
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">{resume.next_action}</p>
-      </div>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-muted/30 p-3">
-        <button className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold">{t.preview}</button>
-        <button onClick={onConfirm} disabled={confirmed} className="rounded-lg bg-gold px-3 py-2 text-xs font-bold text-white disabled:cursor-default disabled:bg-teal">
-          {confirmed ? `✓ ${t.confirmed}` : t.confirmResult}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Composer(props: {
-  t: WorkspaceCopy;
-  locale: Locale;
-  attachOpen: boolean;
-  setAttachOpen: (open: boolean) => void;
-  pendingAttachment: { file: File; previewUrl?: string } | null;
-  onRemoveAttachment: () => void;
-  chatDraft: string;
-  updateChatDraft: (value: string) => void;
-  chatRef: RefObject<HTMLTextAreaElement | null>;
-  onFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
-  onSend: () => void | Promise<void>;
-  onReset: () => void;
-}) {
-  const { t, locale, attachOpen, setAttachOpen, pendingAttachment, onRemoveAttachment, chatDraft, updateChatDraft, chatRef, onSend, onReset } = props;
-  return (
-    <div className="border-t border-line bg-canvas/95 px-5 py-4 backdrop-blur md:px-8 lg:px-10">
-      <div className="relative mx-auto w-full max-w-6xl rounded-xl border border-line bg-panel px-3 py-3 shadow-panel">
-        {attachOpen && (
-          <div className="absolute bottom-[calc(100%+8px)] left-3 z-10 w-56 rounded-xl border border-line bg-panel p-2 shadow-panel">
-            <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-ink">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Upload size={15} /></span>
-              <span>{t.inputModes.upload}</span>
-              <input type="file" className="sr-only" accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,.txt,.md,audio/*" onChange={props.onFile} />
-            </label>
-            <div className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-muted-foreground">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><Sparkles size={15} /></span>
-              <span>{t.inputModes.url}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Gemini App Style Pending Attachment Thumbnail */}
-        {pendingAttachment && (
-          <div className="mb-2 flex items-center gap-3 self-start rounded-lg border border-line bg-muted/60 p-2 pr-3">
-            {pendingAttachment.previewUrl ? (
-              <img src={pendingAttachment.previewUrl} alt="Thumbnail preview" className="size-10 rounded-md object-cover" />
-            ) : (
-              <div className="grid size-10 place-items-center rounded-md bg-panel border border-line text-ink font-bold text-[10px] uppercase">
-                {pendingAttachment.file.name.split('.').pop() || 'FILE'}
-              </div>
-            )}
-            <div className="flex flex-col max-w-[200px] sm:max-w-xs truncate">
-              <span className="truncate text-xs font-semibold text-ink">{pendingAttachment.file.name}</span>
-              <span className="text-[10px] text-muted-foreground">{(pendingAttachment.file.size / 1024).toFixed(1)} KB · Siap dikirim</span>
-            </div>
-            <button
-              onClick={onRemoveAttachment}
-              className="ml-auto grid size-5 place-items-center rounded-full bg-canvas/80 text-muted-foreground transition hover:bg-red-500 hover:text-white"
-              title="Hapus lampiran"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-end gap-2">
-          <button onClick={() => setAttachOpen(!attachOpen)} className={`mb-0.5 grid size-9 shrink-0 place-items-center rounded-lg border border-line ${attachOpen ? "bg-gold text-white" : "bg-muted text-muted-foreground hover:text-ink"}`} aria-label="Attach input source">
-            <Plus size={17} />
-          </button>
-          <button className="mb-0.5 grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-muted text-muted-foreground hover:text-ink" aria-label="Voice input">
-            <Mic2 size={16} />
-          </button>
-          <textarea
-            ref={chatRef}
-            value={chatDraft}
-            onChange={(event) => updateChatDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void onSend();
-              }
-            }}
-            placeholder={t.placeholder}
-            rows={1}
-            className="max-h-[180px] min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground"
-          />
-          <button onClick={() => void onSend()} className="mb-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-gold text-white" aria-label="Send"><ArrowUp size={15} /></button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Inspector(props: {
-  locale: Locale;
-  t: WorkspaceCopy;
-  source: WorkspaceSource | null;
-  phase: WorkspacePhase;
-  resume: BackendResume | null;
-  onClose: () => void;
-}) {
-  const { locale, t, source, phase, resume, onClose } = props;
-  const [rotation, setRotation] = useState(0);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogRotation, setDialogRotation] = useState(0);
-  const [zoom, setZoom] = useState(1);
-
-  useEffect(() => {
-    setRotation(0);
-    setDialogRotation(0);
-    setZoom(1);
-    setDialogOpen(false);
-  }, [source?.id]);
-
-  return (
-    <aside className="hidden h-full overflow-y-auto border-l border-line bg-panel/45 p-5 lg:block">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">{t.inspector}</p>
-          <h2 className="mt-2 text-base font-bold">{t.selectedEvidence}</h2>
-        </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-ink" aria-label="Close inspector"><X size={17} /></button>
-      </div>
-      {!source ? (
-        <p className="mt-6 text-sm text-muted-foreground">{t.noEvidence}</p>
-      ) : (
-        <>
-          {source.previewUrl && (
-            <div className="mt-5 overflow-hidden rounded-xl border border-line bg-canvas/45">
-              <button onClick={() => setDialogOpen(true)} className="flex max-h-80 w-full items-center justify-center overflow-hidden bg-black/5 p-2" aria-label="Open image preview">
-                <img
-                  src={source.previewUrl}
-                  alt={source.label}
-                  className="max-h-72 w-full object-contain transition-transform"
-                  style={{ transform: `rotate(${rotation}deg)` }}
-                />
-              </button>
-              <div className="flex items-center justify-between gap-2 border-t border-line bg-panel/75 p-2">
-                <button onClick={() => setRotation((value) => value + 90)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-ink">
-                  <RotateCw size={12} /> Rotate
-                </button>
-                <button onClick={() => setDialogOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-ink">
-                  <ZoomIn size={12} /> Preview
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="mt-5 rounded-lg border border-line bg-canvas/45 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{source.kind}</p>
-            <p className="mt-2 break-words text-sm font-bold">{source.label}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{source.detail}</p>
-          </div>
-          <div className="my-5 border-t border-line" />
-          <Info label="Status" value={source.status} teal />
-          <Info label="Phase" value={phase.replace("_", " ")} />
-          <Info label="Document type" value={source.document?.document_type || (locale === "id" ? "Belum tersedia" : "Not available")} />
-          {resume && (
-            <div className="mt-5 rounded-lg border border-line bg-canvas/45 p-3 text-xs leading-5 text-muted-foreground">
-              <p className="font-bold text-ink">{locale === "id" ? "Resume terakhir" : "Latest resume"}</p>
-              <p className="mt-2">{resume.summary}</p>
-            </div>
-          )}
-          {source.status === "confirmed" && (
-            <div className="mt-5 flex gap-2 rounded-lg border border-teal/30 bg-teal/10 p-3 text-xs text-teal">
-              <BadgeCheck size={16} className="shrink-0" />
-              <span>{locale === "id" ? "Draf terkonfirmasi dan siap naik ke tahap berikutnya." : "Draft confirmed and ready for the next stage."}</span>
-            </div>
-          )}
-          {source.previewUrl && dialogOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
-              <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-panel">
-                <div className="flex items-center justify-between gap-3 border-b border-line p-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{source.label}</p>
-                    <p className="text-[11px] text-muted-foreground">{source.detail}</p>
+            {/* Chat Audit Stream (Cards & Clean HTML Table) */}
+            <div className="space-y-4 max-w-4xl mx-auto">
+              
+              {/* Bot Response Card */}
+              <div
+                className={`p-4 md:p-6 rounded-2xl border transition-all ${
+                  isDarkMode
+                    ? "bg-[#0E141D] border-slate-800/80 shadow-xl"
+                    : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                    <Bot className="w-4 h-4" />
                   </div>
-                  <button onClick={() => setDialogOpen(false)} className="grid size-9 place-items-center rounded-lg border border-line text-muted-foreground hover:bg-muted hover:text-ink" aria-label="Close image preview">
-                    <X size={15} />
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                      Senior Accountant AI Engine
+                    </h3>
+                    <span className="text-[10px] text-slate-500">Status: Native Parser Ready • PostgreSQL Staging</span>
+                  </div>
+                </div>
+
+                {/* Processing Result Table (SOP Mutlak HTML Table) */}
+                <div className="overflow-x-auto rounded-xl border border-slate-800 bg-[#090D12]">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#131B26] text-slate-300 font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">ID & Tanggal</th>
+                        <th className="p-3">Keterangan Transaksi</th>
+                        <th className="p-3">Klasifikasi COA (PSAK)</th>
+                        <th className="p-3 text-right">Nominal (IDR)</th>
+                        <th className="p-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      {transactions.map((trx) => (
+                        <tr key={trx.id} className="hover:bg-slate-800/20 transition-colors">
+                          <td className="p-3 whitespace-nowrap">
+                            <span className="font-mono text-amber-400 font-medium">{trx.id}</span>
+                            <div className="text-[10px] text-slate-500">{trx.date}</div>
+                          </td>
+                          <td className="p-3 font-medium text-slate-200">{trx.description}</td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono text-[11px]">
+                              {trx.accountCode}
+                            </span>
+                            <span className="ml-2 text-slate-400">{trx.accountName}</span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-semibold text-teal-300 whitespace-nowrap">
+                            Rp {trx.debit.toLocaleString("id-ID")}
+                          </td>
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                trx.status === "DRAFT"
+                                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  : "bg-teal-500/10 text-teal-400 border border-teal-500/20"
+                              }`}
+                            >
+                              {trx.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Card Actions */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/60">
+                  <div className="text-[11px] text-slate-400 flex items-center space-x-1">
+                    <Info className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Transaksional tersimpan aman di server-side PostgreSQL.</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={confirmAllDrafts}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-[#D4AF37] to-amber-600 text-slate-950 hover:opacity-90 shadow-md shadow-amber-500/10 transition-all flex items-center space-x-1.5"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Setujui & Post Semua Draf</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW 2: FINANCIAL REPORT CANVAS (PROFIT & LOSS) */}
+        {viewMode === "report_pnl" && (
+          <div className="space-y-6 max-w-4xl mx-auto w-full animate-fadeIn">
+            {/* Header Report Card */}
+            <div className="p-6 rounded-2xl border bg-[#0E141D] border-slate-800 shadow-xl space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                <div>
+                  <span className="text-[10px] font-bold tracking-widest text-teal-400 uppercase">
+                    PSAK Standard Report
+                  </span>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-100">
+                    Laporan Laba Rugi (Profit & Loss Statement)
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Entitas: <strong className="text-amber-400">{activeEntity}</strong> • Periode: {activePeriod}
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => window.print()}
+                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-xs font-semibold hover:bg-slate-700 flex items-center space-x-1.5 text-slate-300"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Cetak PDF</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode("chat")}
+                    className="px-3 py-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400 text-xs font-semibold hover:bg-teal-500/20"
+                  >
+                    Kembali ke Chat
                   </button>
                 </div>
-                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/10 p-6">
-                  <img
-                    src={source.previewUrl}
-                    alt={source.label}
-                    className="max-h-[72vh] max-w-full object-contain transition-transform"
-                    style={{ transform: `scale(${zoom}) rotate(${dialogRotation}deg)` }}
-                  />
+              </div>
+
+              {/* Financial Data Breakdown */}
+              <div className="space-y-3 text-xs md:text-sm font-mono">
+                <div className="flex justify-between py-2 border-b border-slate-800/80 text-slate-300">
+                  <span>PENDAPATAN OPERASIONAL USAHA</span>
+                  <span className="font-bold text-teal-300">Rp 150.000.000</span>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line p-3">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))))} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">−</button>
-                    <span className="min-w-14 text-center text-xs font-bold text-muted-foreground">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => setZoom((value) => Math.min(3, Number((value + 0.25).toFixed(2))))} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">+</button>
+                <div className="flex justify-between py-2 border-b border-slate-800/80 text-slate-400">
+                  <span className="pl-4">Harga Pokok Penjualan (HPP Standard 88%)</span>
+                  <span>(Rp 132.000.000)</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-700 font-bold text-amber-400 text-sm bg-amber-500/5 px-2 rounded">
+                  <span>LABA KOTOR (GROSS PROFIT)</span>
+                  <span>Rp 18.000.000</span>
+                </div>
+
+                <div className="pt-4 text-slate-300">
+                  <span className="font-sans font-bold text-slate-400 text-[11px] uppercase tracking-wider">
+                    BEBAN OPERASIONAL
+                  </span>
+                  <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-400 pl-4">
+                    <span>Beban Listrik, Air & Telepon</span>
+                    <span>(Rp 1.450.000)</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setDialogRotation((value) => value + 90)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">
-                      <RotateCw size={13} /> Rotate
-                    </button>
-                    <button onClick={() => { setZoom(1); setDialogRotation(0); }} className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-ink">Reset</button>
+                  <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-400 pl-4">
+                    <span>Beban Transportasi & BBM Operasional</span>
+                    <span>(Rp 250.000)</span>
                   </div>
+                </div>
+
+                <div className="flex justify-between py-3 border-t-2 border-teal-500 text-slate-100 font-bold text-base bg-teal-500/10 px-3 rounded-xl mt-4">
+                  <span className="font-sans">LABA BERSIH SEBELUM PAJAK (PPN 11%)</span>
+                  <span className="text-teal-300">Rp 16.300.000</span>
                 </div>
               </div>
             </div>
-          )}
-        </>
-      )}
-    </aside>
-  );
-}
-
-function SidebarFooter({ locale, theme, setTheme }: { locale: Locale; theme: Theme; setTheme: (theme: Theme) => void }) {
-  return (
-    <div className="mt-4 border-t border-line pt-3">
-      <div className="flex gap-2">
-        <button className="grid size-10 place-items-center rounded-lg border border-line bg-canvas/35 text-muted-foreground hover:bg-muted hover:text-ink" aria-label="Settings">
-          <Settings size={15} />
-        </button>
-        <ThemeControl theme={theme} setTheme={setTheme} />
-        <span className="ml-auto inline-flex items-center rounded-md bg-gold/10 px-2 py-1 font-mono text-[10px] font-bold text-gold border border-gold/20">
-          v2.0.0.00051
-        </span>
-      </div>
-      <div className="mt-2 rounded-lg border border-line bg-canvas/45 p-2">
-        <div className="flex items-center gap-2">
-          <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#D9A85B] text-[11px] font-bold text-[#101820]">AR</div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold">iputera21@gmail.com</p>
-            <p className="text-[10px] text-muted-foreground">{locale === "id" ? "Akun aktif" : "Active account"}</p>
           </div>
+        )}
+
+      </main>
+
+      {/* 🔹 OMNI-AGENT COMMAND BAR (FIXED BOTTOM INPUT ULTIMATE) */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-50 p-4 border-t backdrop-blur-xl transition-colors ${
+          isDarkMode ? "bg-[#0E141D]/95 border-slate-800/80" : "bg-white/95 border-slate-200"
+        }`}
+      >
+        <div className="max-w-4xl mx-auto space-y-2">
+          
+          {/* Quick Action Chips */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-[11px] font-medium scrollbar-none">
+            <span className="text-slate-500 whitespace-nowrap">Pintasan AI:</span>
+            <button
+              onClick={() => setViewMode("report_pnl")}
+              className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 hover:border-amber-400/50 text-slate-300 whitespace-nowrap transition-colors"
+            >
+              📊 Lihat Laba Rugi
+            </button>
+            <button
+              onClick={() => setViewMode("report_pnl")}
+              className="px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 hover:border-teal-400/50 text-slate-300 whitespace-nowrap transition-colors"
+            >
+              ⚖️ Neraca Saldo
+            </button>
+            <button
+              onClick={() => {
+                if (fileInputRef.current) fileInputRef.current.click();
+              }}
+              className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 whitespace-nowrap transition-colors"
+            >
+              🧾 Upload Struk / Invoice
+            </button>
+          </div>
+
+          {/* Form Input Main Omnibar */}
+          <form onSubmit={handleSendPrompt} className="relative flex items-center">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv"
+            />
+            
+            {/* Attachment Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`absolute left-3 p-2 rounded-xl transition-colors ${
+                isUploading
+                  ? "animate-pulse text-amber-400"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              }`}
+              title="Unggah Berkas Nota / PDF / Excel"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+
+            {/* Input Field */}
+            <input
+              type="text"
+              value={inputPrompt}
+              onChange={(e) => setInputPrompt(e.target.value)}
+              placeholder="Tanyakan laporan keuangan, upload nota belanja, atau ketik 'Laba Rugi'..."
+              className={`w-full py-3.5 pl-12 pr-24 rounded-2xl text-xs md:text-sm border outline-none transition-all ${
+                isDarkMode
+                  ? "bg-[#090D12] border-slate-700/80 text-slate-100 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
+                  : "bg-slate-100 border-slate-300 text-slate-900 focus:border-teal-500"
+              }`}
+            />
+
+            {/* Right Buttons Inside Omnibar */}
+            <div className="absolute right-2 flex items-center space-x-1">
+              <button
+                type="button"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                title="Voice Note"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+              <button
+                type="submit"
+                className="p-2.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-amber-600 text-slate-950 hover:opacity-90 transition-opacity font-bold shadow-md shadow-amber-500/10"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
   );
-}
-
-function ThemeControl({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) {
-  const nextTheme: Record<Theme, Theme> = {
-    system: "light",
-    light: "dark",
-    dark: "system",
-  };
-  const Icon = theme === "system" ? Laptop : theme === "light" ? Sun : Moon;
-  return (
-    <button onClick={() => setTheme(nextTheme[theme])} className="grid size-10 place-items-center rounded-lg border border-line bg-canvas/35 text-muted-foreground hover:bg-muted hover:text-ink" aria-label={`Theme: ${theme}`}>
-      <Icon size={14} />
-    </button>
-  );
-}
-
-async function postJson<T>(path: string, payload: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw new Error(`API request failed (${response.status})`);
-  return response.json();
-}
-
-async function createUrlSource(url: string): Promise<WorkspaceSource> {
-  const source: WorkspaceSource = {
-    id: crypto.randomUUID(),
-    kind: "url",
-    label: url,
-    detail: "URL · waiting for content fetch adapter",
-    status: "quick_checked",
-  };
-  try {
-    source.document = await postJson<BackendDocument>("/api/inputs/url", {
-      url,
-      source_label: url,
-      metadata: { ingestion: "workspace_chat_url" },
-    });
-    source.detail = `${source.document.document_type} · content fetch pending`;
-  } catch {
-    source.status = "failed";
-    source.detail = "URL · backend registration failed";
-  }
-  return source;
-}
-
-function buildSourcePlan(source: WorkspaceSource, locale: Locale, context?: string) {
-  if (locale === "id") {
-    return [
-      `Saya sudah menerima sumber: ${source.label}.`,
-      "",
-      "Cek cepat:",
-      `- Jenis sumber: ${source.kind === "file" ? "file attached" : "URL"}`,
-      `- Detail: ${source.detail}`,
-      context ? `- Konteks chat: ${context}` : null,
-      "",
-      "Rencana proses yang saya sarankan:",
-      "1. Identifikasi tipe dokumen dan struktur data.",
-      "2. Ekstrak konten mentah tanpa posting jurnal.",
-      "3. Normalisasi ke schema akuntansi Bizeto PSAK.",
-      "4. Validasi angka, sumber bukti, dan potensi issue.",
-      "5. Buat resume dan preview untuk Anda review.",
-      "",
-      "Saya belum memproses data ini. Klik Konfirmasi proses, atau tulis instruksi eksplisit seperti “proses file ini”.",
-    ].filter(Boolean).join("\n");
-  }
-  return [
-    `I received this source: ${source.label}.`,
-    "",
-    "Quick check:",
-    `- Source kind: ${source.kind === "file" ? "attached file" : "URL"}`,
-    `- Detail: ${source.detail}`,
-    context ? `- Chat context: ${context}` : null,
-    "",
-    "Recommended process plan:",
-    "1. Identify document type and data structure.",
-    "2. Extract raw content without posting journals.",
-    "3. Normalize into the Bizeto PSAK accounting schema.",
-    "4. Validate numbers, evidence locator, and possible issues.",
-    "5. Generate a resume and preview for your review.",
-    "",
-    "I have not processed this data yet. Click Confirm process, or write an explicit instruction like “process this file”.",
-  ].filter(Boolean).join("\n");
-}
-
-function buildDiscussionReply(text: string, locale: Locale, hasSource: boolean) {
-  if (locale === "id") {
-    return `Saya adalah Senior Akuntan AI di Bizeto PSAK.\n\n${hasSource ? "Karena belum ada instruksi untuk memproses berkas, saya siap membantu mendiskusikan konteks bukti ini lebih lanjut. " : ""}Mengenai topik “${text}”, ada aspek akuntansi PSAK, pengaturan entitas, atau kriteria validasi tertentu yang ingin kita bahas bersama?`;
-  }
-  return `I am the Senior AI Accountant at Bizeto PSAK.\n\n${hasSource ? "Since there is no instruction to process the file yet, I am ready to discuss this evidence further. " : ""}Regarding “${text}”, are there specific PSAK accounting standards, entity policies, or validation criteria you would like to explore together?`;
-}
-
-function isExplicitProcess(text: string) {
-  return /\b(proses|process|olah|jalankan|mulai proses|process this|process file)\b/i.test(text);
-}
-
-function extractUrl(text: string) {
-  return text.match(/https?:\/\/[^\s]+/i)?.[0] ?? null;
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatRupiah(value: number) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function Metric({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
-  return <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className={`mt-2 text-base font-bold ${warning ? "text-[#A9782F]" : "text-ink"}`}>{value}</p></div>;
-}
-
-function Info({ label, value, teal = false }: { label: string; value: string; teal?: boolean }) {
-  return <div className="flex justify-between gap-3 py-2 text-xs"><span className="text-muted-foreground">{label}</span><span className={teal ? "font-semibold text-teal" : "text-right font-medium"}>{value}</span></div>;
 }

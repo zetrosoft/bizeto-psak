@@ -35,6 +35,8 @@ import {
   Eye,
   Copy,
   Check,
+  ThumbsUp,
+  ThumbsDown,
   Search as SearchIcon,
 } from "lucide-react";
 
@@ -52,17 +54,21 @@ interface TransactionRow {
   status: "DRAFT" | "POSTED";
 }
 
+interface ChatMessage {
+  id: string;
+  sender: "user" | "ai";
+  text: string;
+  hasCanvas?: boolean;
+  canvasTitle?: string;
+  copied?: boolean;
+  feedback?: "up" | "down" | null;
+}
+
 interface ChatSession {
   id: string;
   title: string;
   timestamp: string;
-  messages: Array<{
-    id: string;
-    sender: "user" | "ai";
-    text: string;
-    hasCanvas?: boolean;
-    canvasTitle?: string;
-  }>;
+  messages: ChatMessage[];
 }
 
 export default function GeminiCanvasWorkspace() {
@@ -74,12 +80,12 @@ export default function GeminiCanvasWorkspace() {
   const [activeEntity, setActiveEntity] = useState("PT Sumber Makmur");
   const [activePeriod, setActivePeriod] = useState("Juli 2026");
 
-  // State untuk Formula Bar & Active Cell
+  // State Formula Bar & Sel Aktif
   const [selectedCell, setSelectedCell] = useState<{ id: string; col: string }>({ id: "2", col: "description" });
   const [formulaValue, setFormulaValue] = useState<string>("Pembelian di Supplier");
   const [autoCalc, setAutoCalc] = useState<boolean>(true);
 
-  // Manual Resizable Split Screen Width (Kolom Kiri Chat %)
+  // Splitter Width
   const [leftPanelWidthPercent, setLeftPanelWidthPercent] = useState<number>(38);
   const [isResizing, setIsResizing] = useState<boolean>(false);
 
@@ -101,6 +107,8 @@ export default function GeminiCanvasWorkspace() {
           text: "Saya telah mengekstrak seluruh data dari PDF laporan General Ledger Toko Sembako Kusuma dan menyajikannya dalam aplikasi spreadsheet/Excel interaktif.\n\nDalam aplikasi ini, setiap cell dapat diedit secara langsung, dilengkapi dengan fitur perhitungan saldo otomatis, formula bar, pengurutan/pencarian data, serta opsi ekspor ke file Excel (.xlsx), CSV, atau Print PDF.\n\nBerikut adalah aplikasi spreadsheet interaktif untuk data laporan keuangan tersebut:",
           hasCanvas: true,
           canvasTitle: "General Ledger Toko Sembako Kusuma",
+          feedback: null,
+          copied: false,
         },
       ],
     },
@@ -108,7 +116,7 @@ export default function GeminiCanvasWorkspace() {
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
-  // 🔹 Data Worksheet Canvas PERSIS SAMA DENGAN SCREENSHOT 3
+  // Data Worksheet Canvas
   const [worksheetData, setWorksheetData] = useState<TransactionRow[]>([
     {
       id: "1",
@@ -245,6 +253,35 @@ export default function GeminiCanvasWorkspace() {
       setLayoutState("chat_active");
       setSidebarOpen(true);
     }
+  };
+
+  const handleCopyText = (msgId: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setRecentSessions((prev) =>
+      prev.map((s) => ({
+        ...s,
+        messages: s.messages.map((m) => (m.id === msgId ? { ...m, copied: true } : m)),
+      }))
+    );
+    setTimeout(() => {
+      setRecentSessions((prev) =>
+        prev.map((s) => ({
+          ...s,
+          messages: s.messages.map((m) => (m.id === msgId ? { ...m, copied: false } : m)),
+        }))
+      );
+    }, 2000);
+  };
+
+  const handleFeedback = (msgId: string, type: "up" | "down") => {
+    setRecentSessions((prev) =>
+      prev.map((s) => ({
+        ...s,
+        messages: s.messages.map((m) =>
+          m.id === msgId ? { ...m, feedback: m.feedback === type ? null : type } : m
+        ),
+      }))
+    );
   };
 
   const handleSendPrompt = (e: React.FormEvent) => {
@@ -572,7 +609,7 @@ export default function GeminiCanvasWorkspace() {
                     key={m.id}
                     className={`flex flex-col ${
                       m.sender === "user" ? "items-end" : "items-start"
-                    } space-y-2`}
+                    } space-y-2 group`}
                   >
                     <div
                       className={`p-4 rounded-2xl text-xs leading-relaxed max-w-xl ${
@@ -592,9 +629,9 @@ export default function GeminiCanvasWorkspace() {
                       {m.hasCanvas && (
                         <div
                           onClick={() => setLayoutState("worksheet_canvas")}
-                          className="mt-4 p-4 rounded-2xl border border-slate-800 bg-[#131B26] hover:bg-slate-800/80 cursor-pointer transition-all flex items-center space-x-3 group"
+                          className="mt-4 p-4 rounded-2xl border border-slate-800 bg-[#131B26] hover:bg-slate-800/80 cursor-pointer transition-all flex items-center space-x-3 group/card"
                         >
-                          <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 group-hover:scale-105 transition-transform">
+                          <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 group-hover/card:scale-105 transition-transform">
                             <Table className="w-5 h-5" />
                           </div>
                           <div>
@@ -605,6 +642,38 @@ export default function GeminiCanvasWorkspace() {
                               Klik untuk membuka Aplikasi Spreadsheet Interaktif (Canvas)
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* 🔹 FITUR GEMINI COPY & FEEDBACK SYSTEM (THUMBS UP / DOWN FOR CONTINUOUS LEARNING) */}
+                      {m.sender === "ai" && (
+                        <div className="flex items-center space-x-2 pt-3 text-slate-400 opacity-80 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleCopyText(m.id, m.text)}
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors flex items-center space-x-1"
+                            title="Salin Respons"
+                          >
+                            {m.copied ? <Check className="w-3.5 h-3.5 text-teal-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            {m.copied && <span className="text-[10px] text-teal-400 font-semibold">Tersalin!</span>}
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(m.id, "up")}
+                            className={`p-1 rounded hover:bg-slate-800 transition-colors ${
+                              m.feedback === "up" ? "text-teal-400 font-bold" : "text-slate-400 hover:text-slate-200"
+                            }`}
+                            title="Respons Sangat Baik (AI Mempertahankan Kualitas Ini)"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(m.id, "down")}
+                            className={`p-1 rounded hover:bg-slate-800 transition-colors ${
+                              m.feedback === "down" ? "text-rose-400 font-bold" : "text-slate-400 hover:text-slate-200"
+                            }`}
+                            title="Respons Kurang Tepat (AI Belajar Memperbaiki Koreksi)"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
                     </div>
@@ -650,12 +719,37 @@ export default function GeminiCanvasWorkspace() {
                               </span>
                             </div>
                           )}
+
+                          {/* Copy & Feedback System */}
+                          {m.sender === "ai" && (
+                            <div className="flex items-center space-x-2 pt-2 text-slate-400">
+                              <button
+                                onClick={() => handleCopyText(m.id, m.text)}
+                                className="p-1 rounded hover:bg-slate-800"
+                                title="Salin Respons"
+                              >
+                                {m.copied ? <Check className="w-3.5 h-3.5 text-teal-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(m.id, "up")}
+                                className={`p-1 rounded hover:bg-slate-800 ${m.feedback === "up" ? "text-teal-400" : ""}`}
+                              >
+                                <ThumbsUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(m.id, "down")}
+                                className={`p-1 rounded hover:bg-slate-800 ${m.feedback === "down" ? "text-rose-400" : ""}`}
+                              >
+                                <ThumbsDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  {/* Input Chat Di Kolom Ke-2 (Screenshot 3 Alignment) */}
+                  {/* Input Chat Di Kolom Ke-2 */}
                   <div className="p-3 border-t border-slate-800/80 bg-[#0E141D]">
                     <form onSubmit={handleSendPrompt} className="relative flex items-center">
                       <button
@@ -682,7 +776,7 @@ export default function GeminiCanvasWorkspace() {
                   </div>
                 </div>
 
-                {/* 🔹 MANUAL RESIZE SPLITTER / DRAG HANDLE BAR */}
+                {/* 🔹 MANUAL RESIZE SPLITTER */}
                 <div
                   onMouseDown={startResizing}
                   className="hidden md:flex w-1.5 hover:w-2 bg-slate-800/60 hover:bg-[#D4AF37] cursor-col-resize items-center justify-center transition-all z-20"
@@ -691,12 +785,12 @@ export default function GeminiCanvasWorkspace() {
                   <GripVertical className="w-3 h-3 text-slate-500 opacity-50 hover:opacity-100" />
                 </div>
 
-                {/* 🔹 KOLOM KANAN: PREVIEW POP-OUT WORKSHEET CANVAS (PERSIS SAMA SCREENSHOT 3) */}
+                {/* 🔹 KOLOM KANAN: PREVIEW POP-OUT WORKSHEET CANVAS (MARGIN DIPERKECIL + SCROLLBAR DI DALAM CARD) */}
                 <div
                   style={{ width: `${100 - leftPanelWidthPercent}%` }}
-                  className="w-full flex flex-col h-full bg-[#0E141D] p-3 md:p-5 overflow-hidden"
+                  className="w-full flex flex-col h-full bg-[#0E141D] p-1.5 md:p-2 overflow-hidden"
                 >
-                  {/* Container Card Modal Visual Gemini (Screenshot 3 Match) */}
+                  {/* Container Card Preview Utama */}
                   <div className="w-full h-full rounded-2xl border border-slate-800 bg-[#090D12] shadow-2xl flex flex-col overflow-hidden">
                     
                     {/* Header Bar Canvas Modul */}
@@ -733,7 +827,7 @@ export default function GeminiCanvasWorkspace() {
                       </div>
                     </div>
 
-                    {/* Toolbar Opsi Ekspor PERSIS SAMA SCREENSHOT 3 */}
+                    {/* Toolbar Opsi Ekspor PERSIS SCREENSHOT 3 */}
                     <div className="p-3 border-b border-slate-800/80 bg-[#0E141D] flex flex-wrap items-center justify-between gap-2 text-xs flex-shrink-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <button className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs flex items-center space-x-1.5">
@@ -784,7 +878,7 @@ export default function GeminiCanvasWorkspace() {
                       <span className="text-slate-300 font-medium">Auto-Hitung Saldo Akhir</span>
                     </div>
 
-                    {/* FORMULA BAR PERSIS SCREENSHOT 3 (C2 | fx | Formula Text | Search Input) */}
+                    {/* FORMULA BAR PERSIS SCREENSHOT 3 */}
                     <div className="px-3 py-2 border-b border-slate-800 bg-[#131B26] flex items-center space-x-2 text-xs flex-shrink-0">
                       <div className="px-2.5 py-1 rounded bg-[#090D12] border border-slate-800 font-mono text-slate-300 font-semibold text-center min-w-12">
                         {selectedCell.col === "description" ? "C2" : "B2"}
@@ -793,7 +887,12 @@ export default function GeminiCanvasWorkspace() {
                       <input
                         type="text"
                         value={formulaValue}
-                        onChange={(e) => setFormulaValue(e.target.value)}
+                        onChange={(e) => {
+                          setFormulaValue(e.target.value);
+                          if (selectedCell.id) {
+                            handleCellEdit(selectedCell.id, selectedCell.col as keyof TransactionRow, e.target.value);
+                          }
+                        }}
                         className="flex-1 bg-[#090D12] border border-slate-800 rounded px-3 py-1 text-slate-200 font-mono outline-none focus:border-teal-500 text-xs"
                       />
                       <div className="relative w-64 hidden sm:block">
@@ -806,148 +905,139 @@ export default function GeminiCanvasWorkspace() {
                       </div>
                     </div>
 
-                    {/* BANNER LEDGER REPORT INFO (PERSIS SAMA SCREENSHOT 3) */}
-                    <div className="p-4 bg-slate-900/40 border-b border-slate-800 text-xs flex flex-wrap justify-between items-start gap-4 flex-shrink-0">
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[10px]">
-                            PDF Extraction Result
-                          </span>
-                          <span className="text-slate-400 font-mono text-[11px]">
-                            • Account Code: 1-1101
-                          </span>
+                    {/* 🔹 AREA PREVIEW BERBENTUK SCROLLBAR DI DALAM CARD CARD (SINGLE SCROLL AREA UTUH!) */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#090D12] scrollbar-thin scrollbar-thumb-slate-800">
+                      
+                      {/* Banner Info General Ledger */}
+                      <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800/80 text-xs flex flex-wrap justify-between items-start gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[10px]">
+                              PDF Extraction Result
+                            </span>
+                            <span className="text-slate-400 font-mono text-[11px]">
+                              • Account Code: 1-1101
+                            </span>
+                          </div>
+                          <h2 className="text-base font-extrabold text-slate-100 tracking-tight">
+                            GENERAL LEDGER REPORT
+                          </h2>
+                          <p className="text-[11px] text-slate-400">
+                            📍 Jl. Sandang Lawe 22, Sidomulyo, Karanggeneng, Boyolali | WA: 085600239869
+                          </p>
                         </div>
-                        <h2 className="text-base font-extrabold text-slate-100 tracking-tight">
-                          GENERAL LEDGER REPORT
-                        </h2>
-                        <p className="text-[11px] text-slate-400">
-                          📍 Jl. Sandang Lawe 22, Sidomulyo, Karanggeneng, Boyolali | WA: 085600239869
-                        </p>
+
+                        <div className="p-3 rounded-xl border border-slate-800 bg-[#131B26] text-right text-xs font-mono space-y-0.5">
+                          <div className="text-slate-400">
+                            Periode: <strong className="text-slate-200">31/07/2026 – 14/08/2026</strong>
+                          </div>
+                          <div className="text-slate-400">
+                            Nama Akun: <strong className="text-teal-400">1-1101 - Cash</strong>
+                          </div>
+                          <div className="text-slate-400">
+                            Mata Uang: <strong className="text-amber-400">IDR (Rupiah)</strong>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="p-3 rounded-xl border border-slate-800 bg-[#131B26] text-right text-xs font-mono space-y-0.5">
-                        <div className="text-slate-400">
-                          Periode: <strong className="text-slate-200">31/07/2026 – 14/08/2026</strong>
-                        </div>
-                        <div className="text-slate-400">
-                          Nama Akun: <strong className="text-teal-400">1-1101 - Cash</strong>
-                        </div>
-                        <div className="text-slate-400">
-                          Mata Uang: <strong className="text-amber-400">IDR (Rupiah)</strong>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SPREADSHEET TABLE GRID (HERO INTERACTIVE AREA PERSIS SCREENSHOT 3) */}
-                    <div className="flex-1 overflow-auto p-3 bg-[#090D12]">
-                      <table className="w-full border-collapse text-xs text-left">
-                        <thead>
-                          <tr className="bg-[#131B26] text-slate-400 font-semibold border-b border-slate-800">
-                            <th className="p-2 border border-slate-800 text-center w-10">#</th>
-                            <th className="p-2 border border-slate-800 text-center w-12">A</th>
-                            <th className="p-2 border border-slate-800 text-center w-36">B</th>
-                            <th className="p-2 border border-slate-800 text-center">C</th>
-                            <th className="p-2 border border-slate-800 text-center w-32">D</th>
-                            <th className="p-2 border border-slate-800 text-center w-32">E</th>
-                          </tr>
-                          <tr className="bg-[#0E141D] text-slate-300 font-bold border-b border-slate-800">
-                            <th className="p-2.5 border border-slate-800 text-center">No</th>
-                            <th className="p-2.5 border border-slate-800">Tanggal</th>
-                            <th className="p-2.5 border border-slate-800">No. Ref</th>
-                            <th className="p-2.5 border border-slate-800">Deskripsi Transaksi</th>
-                            <th className="p-2.5 border border-slate-800 text-right">Debit (IDR)</th>
-                            <th className="p-2.5 border border-slate-800 text-right">Kredit (IDR)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {worksheetData.map((row) => {
-                            const isSelected = selectedCell.id === row.id;
-                            return (
-                              <tr key={row.id} className="hover:bg-slate-800/30">
-                                <td className="p-2.5 border border-slate-800 text-center text-slate-500 font-mono">
-                                  {row.no}
-                                </td>
-                                <td
-                                  onClick={() => handleCellClick(row.id, "date", row.date)}
-                                  className={`p-2.5 border border-slate-800 font-mono text-slate-300 cursor-pointer ${
-                                    isSelected && selectedCell.col === "date"
-                                      ? "ring-2 ring-blue-500 bg-blue-500/10"
-                                      : ""
-                                  }`}
-                                >
-                                  {row.status === "DRAFT" ? (
+                      {/* 🔹 SPREADSHEET TABLE GRID INLINE EDITABLE CELL PERSIS SAMA SCREENSHOT 3 */}
+                      <div className="border border-slate-800 rounded-xl overflow-hidden">
+                        <table className="w-full border-collapse text-xs text-left">
+                          <thead>
+                            <tr className="bg-[#131B26] text-slate-400 font-semibold border-b border-slate-800">
+                              <th className="p-2 border-r border-slate-800 text-center w-10">#</th>
+                              <th className="p-2 border-r border-slate-800 text-center w-12">A</th>
+                              <th className="p-2 border-r border-slate-800 text-center w-36">B</th>
+                              <th className="p-2 border-r border-slate-800 text-center">C</th>
+                              <th className="p-2 border-r border-slate-800 text-center w-32">D</th>
+                              <th className="p-2 text-center w-32">E</th>
+                            </tr>
+                            <tr className="bg-[#0E141D] text-slate-300 font-bold border-b border-slate-800">
+                              <th className="p-2.5 border-r border-slate-800 text-center">No</th>
+                              <th className="p-2.5 border-r border-slate-800">Tanggal</th>
+                              <th className="p-2.5 border-r border-slate-800">No. Ref</th>
+                              <th className="p-2.5 border-r border-slate-800">Deskripsi Transaksi</th>
+                              <th className="p-2.5 border-r border-slate-800 text-right">Debit (IDR)</th>
+                              <th className="p-2.5 text-right">Kredit (IDR)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {worksheetData.map((row) => {
+                              const isSelectedDesc = selectedCell.id === row.id && selectedCell.col === "description";
+                              return (
+                                <tr key={row.id} className="hover:bg-slate-800/30">
+                                  <td className="p-2.5 border-r border-b border-slate-800 text-center text-slate-500 font-mono">
+                                    {row.no}
+                                  </td>
+                                  <td
+                                    onClick={() => handleCellClick(row.id, "date", row.date)}
+                                    className="p-2.5 border-r border-b border-slate-800 font-mono text-slate-300"
+                                  >
                                     <input
                                       type="text"
                                       value={row.date}
+                                      disabled={row.status === "POSTED"}
                                       onChange={(e) => handleCellEdit(row.id, "date", e.target.value)}
-                                      className="w-full bg-transparent outline-none font-bold text-slate-200"
+                                      className="w-full bg-transparent outline-none font-bold text-slate-200 focus:bg-slate-800/80 px-1 rounded"
                                     />
-                                  ) : (
-                                    row.date
-                                  )}
-                                </td>
-                                <td
-                                  onClick={() => handleCellClick(row.id, "refNo", row.refNo)}
-                                  className={`p-2.5 border border-slate-800 font-mono text-slate-400 cursor-pointer ${
-                                    isSelected && selectedCell.col === "refNo"
-                                      ? "ring-2 ring-blue-500 bg-blue-500/10"
-                                      : ""
-                                  }`}
-                                >
-                                  {row.refNo}
-                                </td>
-                                <td
-                                  onClick={() => handleCellClick(row.id, "description", row.description)}
-                                  className={`p-2.5 border border-slate-800 cursor-pointer ${
-                                    isSelected && selectedCell.col === "description"
-                                      ? "ring-2 ring-blue-500 bg-blue-500/10"
-                                      : ""
-                                  }`}
-                                >
-                                  {row.status === "DRAFT" ? (
+                                  </td>
+                                  <td
+                                    onClick={() => handleCellClick(row.id, "refNo", row.refNo)}
+                                    className="p-2.5 border-r border-b border-slate-800 font-mono text-slate-400"
+                                  >
+                                    <input
+                                      type="text"
+                                      value={row.refNo}
+                                      disabled={row.status === "POSTED"}
+                                      onChange={(e) => handleCellEdit(row.id, "refNo", e.target.value)}
+                                      className="w-full bg-transparent outline-none font-mono text-slate-400 focus:bg-slate-800/80 px-1 rounded"
+                                    />
+                                  </td>
+                                  <td
+                                    onClick={() => handleCellClick(row.id, "description", row.description)}
+                                    className={`p-2.5 border-r border-b border-slate-800 ${
+                                      isSelectedDesc ? "ring-2 ring-blue-500 bg-blue-500/10" : ""
+                                    }`}
+                                  >
                                     <input
                                       type="text"
                                       value={row.description}
-                                      onChange={(e) =>
-                                        handleCellEdit(row.id, "description", e.target.value)
-                                      }
-                                      className="w-full bg-transparent outline-none font-semibold text-slate-100"
+                                      disabled={row.status === "POSTED"}
+                                      onChange={(e) => handleCellEdit(row.id, "description", e.target.value)}
+                                      className="w-full bg-transparent outline-none font-semibold text-slate-100 focus:bg-slate-800/80 px-1 rounded"
                                     />
-                                  ) : (
-                                    <span className="font-semibold text-slate-200">
-                                      {row.description}
-                                    </span>
-                                  )}
-                                </td>
-                                <td
-                                  onClick={() =>
-                                    handleCellClick(row.id, "debit", String(row.debit))
-                                  }
-                                  className={`p-2.5 border border-slate-800 text-right font-mono font-semibold text-slate-300 cursor-pointer ${
-                                    isSelected && selectedCell.col === "debit"
-                                      ? "ring-2 ring-blue-500 bg-blue-500/10"
-                                      : ""
-                                  }`}
-                                >
-                                  {row.debit === 0 ? "0,00" : row.debit.toLocaleString("id-ID")}
-                                </td>
-                                <td
-                                  onClick={() =>
-                                    handleCellClick(row.id, "credit", String(row.credit))
-                                  }
-                                  className={`p-2.5 border border-slate-800 text-right font-mono font-semibold text-rose-400 cursor-pointer ${
-                                    isSelected && selectedCell.col === "credit"
-                                      ? "ring-2 ring-blue-500 bg-blue-500/10"
-                                      : ""
-                                  }`}
-                                >
-                                  {row.credit === 0 ? "0,00" : row.credit.toLocaleString("id-ID")}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                  </td>
+                                  <td
+                                    onClick={() => handleCellClick(row.id, "debit", String(row.debit))}
+                                    className="p-2.5 border-r border-b border-slate-800 text-right font-mono"
+                                  >
+                                    <input
+                                      type="number"
+                                      value={row.debit}
+                                      disabled={row.status === "POSTED"}
+                                      onChange={(e) => handleCellEdit(row.id, "debit", Number(e.target.value))}
+                                      className="w-full bg-transparent text-right outline-none font-semibold text-slate-300 focus:bg-slate-800/80 px-1 rounded"
+                                    />
+                                  </td>
+                                  <td
+                                    onClick={() => handleCellClick(row.id, "credit", String(row.credit))}
+                                    className="p-2.5 border-b border-slate-800 text-right font-mono"
+                                  >
+                                    <input
+                                      type="number"
+                                      value={row.credit}
+                                      disabled={row.status === "POSTED"}
+                                      onChange={(e) => handleCellEdit(row.id, "credit", Number(e.target.value))}
+                                      className="w-full bg-transparent text-right outline-none font-semibold text-rose-400 focus:bg-slate-800/80 px-1 rounded"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
                     </div>
 
                   </div>
